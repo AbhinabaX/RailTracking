@@ -4,7 +4,8 @@ import {
   calculateETA,
 } from "../services/etaService.js";
 
-import saveTrainHistory from "../services/trainHistoryService.js";
+import saveTrainHistory
+  from "../services/trainHistoryService.js";
 
 
 /* =====================================================
@@ -27,42 +28,66 @@ export const getAllTrains = (req, res) => {
 ===================================================== */
 
 export const searchTrains = (req, res) => {
+
   const query =
     req.query.q?.trim().toLowerCase();
 
+
   if (!query) {
+
     return res.status(400).json({
       success: false,
       message:
         "Please provide a train number, name or route.",
     });
+
   }
 
-  const results = trains.filter((train) => {
-    return (
-      String(train.number)
-        .toLowerCase()
-        .includes(query) ||
 
-      String(train.name)
-        .toLowerCase()
-        .includes(query) ||
+  const results =
+    trains.filter((train) => {
 
-      String(train.from)
-        .toLowerCase()
-        .includes(query) ||
+      return (
 
-      String(train.to)
-        .toLowerCase()
-        .includes(query)
-    );
-  });
+        String(train.number)
+          .toLowerCase()
+          .includes(query)
+
+        ||
+
+        String(train.name)
+          .toLowerCase()
+          .includes(query)
+
+        ||
+
+        String(train.from)
+          .toLowerCase()
+          .includes(query)
+
+        ||
+
+        String(train.to)
+          .toLowerCase()
+          .includes(query)
+
+      );
+
+    });
+
 
   return res.json({
+
     success: true,
-    count: results.length,
-    trains: results,
+
+    count:
+      results.length,
+
+    trains:
+      results,
+
   });
+
 };
 
 
@@ -71,115 +96,170 @@ export const searchTrains = (req, res) => {
    GET /api/trains/:number
 ===================================================== */
 
-export const getTrainByNumber = (req, res) => {
-  const trainNumber =
-    req.params.number;
+export const getTrainByNumber =
+  (req, res) => {
 
-  const train = trains.find(
-    (item) =>
-      String(item.number) ===
-      String(trainNumber)
-  );
+    const trainNumber =
+      req.params.number;
 
-  if (!train) {
-    return res.status(404).json({
-      success: false,
-      message: "Train not found.",
+
+    const train =
+      trains.find(
+        (item) =>
+          String(item.number) ===
+          String(trainNumber)
+      );
+
+
+    if (!train) {
+
+      return res.status(404).json({
+        success: false,
+        message:
+          "Train not found.",
+      });
+
+    }
+
+
+    return res.json({
+      success: true,
+      train,
     });
-  }
 
-  return res.json({
-    success: true,
-    train,
-  });
-};
+  };
 
 
 /* =====================================================
    FETCH LIVE TRAIN DATA FROM RAILRADAR
 ===================================================== */
 
-const fetchLiveTrainData = async (
-  trainNumber
-) => {
-  const apiKey =
-    process.env.RAILRADAR_API_KEY?.trim();
+const fetchLiveTrainData =
+  async (
+    trainNumber
+  ) => {
 
-  if (!apiKey) {
-    const error = new Error(
-      "RAILRADAR_API_KEY is missing from .env"
+    const apiKey =
+      process.env.RAILRADAR_API_KEY?.trim();
+
+
+    if (!apiKey) {
+
+      const error =
+        new Error(
+          "RAILRADAR_API_KEY is missing from .env"
+        );
+
+      error.statusCode =
+        500;
+
+      throw error;
+
+    }
+
+
+    const url =
+      `https://api.railradar.in/v1/trains/${trainNumber}/live` +
+      `?haltsOnly=true` +
+      `&includeCoordinates=true` +
+      `&geometry=true` +
+      `&format=coordinates`;
+
+
+    const response =
+      await fetch(
+        url,
+        {
+          method:
+            "GET",
+
+          headers: {
+            Authorization:
+              `Bearer ${apiKey}`,
+
+            Accept:
+              "application/json",
+          },
+        }
+      );
+
+
+    let payload =
+      null;
+
+
+    try {
+
+      payload =
+        await response.json();
+
+    } catch {
+
+      payload =
+        null;
+
+    }
+
+
+    /* -----------------------------------------------
+       RATE LIMIT
+    ------------------------------------------------ */
+
+    if (
+      response.status ===
+      429
+    ) {
+
+      const error =
+        new Error(
+          "Live train API rate limit reached. Please wait and try again later."
+        );
+
+      error.statusCode =
+        429;
+
+      throw error;
+
+    }
+
+
+    /* -----------------------------------------------
+       API ERROR
+    ------------------------------------------------ */
+
+    if (!response.ok) {
+
+      const error =
+        new Error(
+          payload?.error?.message ||
+          payload?.message ||
+          "Unable to fetch live train data."
+        );
+
+      error.statusCode =
+        response.status;
+
+      throw error;
+
+    }
+
+
+    /*
+      RailRadar may return:
+
+      { data: {...} }
+
+      or directly:
+
+      {...}
+    */
+
+    return (
+      payload?.data ??
+      payload
     );
 
-    error.statusCode = 500;
-
-    throw error;
-  }
-
-  const url =
-    `https://api.railradar.in/v1/trains/${trainNumber}/live` +
-    `?haltsOnly=true` +
-    `&includeCoordinates=true` +
-    `&geometry=true` +
-    `&format=coordinates`;
-
-  const response = await fetch(url, {
-    method: "GET",
-
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      Accept: "application/json",
-    },
-  });
-
-  let payload = null;
-
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-
-  /* -----------------------------------------------
-     RATE LIMIT
-  ------------------------------------------------ */
-
-  if (response.status === 429) {
-    const error = new Error(
-      "Live train API rate limit reached. Please wait and try again later."
-    );
-
-    error.statusCode = 429;
-
-    throw error;
-  }
-
-  /* -----------------------------------------------
-     API ERROR
-  ------------------------------------------------ */
-
-  if (!response.ok) {
-    const error = new Error(
-      payload?.error?.message ||
-        payload?.message ||
-        "Unable to fetch live train data."
-    );
-
-    error.statusCode =
-      response.status;
-
-    throw error;
-  }
-
-  /*
-    RailRadar may return:
-    { data: {...} }
-
-    or directly:
-    {...}
-  */
-
-  return payload?.data ?? payload;
-};
+  };
 
 
 /* =====================================================
@@ -187,158 +267,205 @@ const fetchLiveTrainData = async (
    GET /api/trains/live/:number
 ===================================================== */
 
-export const getLiveTrain = async (
-  req,
-  res
-) => {
-  const { number } = req.params;
+export const getLiveTrain =
+  async (
+    req,
+    res
+  ) => {
 
-  /* -----------------------------------------------
-     VALIDATION
-  ------------------------------------------------ */
+    const {
+      number,
+    } = req.params;
 
-  if (!/^\d{5}$/.test(number)) {
-    return res.status(400).json({
-      success: false,
-      message:
-        "Train number must contain exactly 5 digits.",
-    });
-  }
 
-  try {
     /* -----------------------------------------------
-       FETCH LIVE DATA
+       VALIDATION
     ------------------------------------------------ */
 
-    const live =
-      await fetchLiveTrainData(
+    if (
+      !/^\d{5}$/.test(
         number
-      );
+      )
+    ) {
 
-    /* -----------------------------------------------
-       SAVE HISTORY
-       AND CALCULATE SPEED
-    ------------------------------------------------ */
+      return res.status(400).json({
 
-    const historyResult =
-      await saveTrainHistory(
-        live
-      );
+        success:
+          false,
 
-    /* -----------------------------------------------
-       SPEED
-    ------------------------------------------------ */
+        message:
+          "Train number must contain exactly 5 digits.",
 
-    const currentSpeedKmh =
-      historyResult?.currentSpeedKmh ??
-      null;
+      });
 
-    const speedSource =
-      historyResult?.speedSource ||
-      (
-        currentSpeedKmh !== null
-          ? "calculated"
-          : "unavailable"
-      );
+    }
 
-    /* -----------------------------------------------
-       GPS
-    ------------------------------------------------ */
 
-    const apiLocation =
-      live?.currentLocation ||
-      {};
+    try {
 
-    const latitude =
-      historyResult?.latitude ??
-      apiLocation?.lat ??
-      apiLocation?.latitude ??
-      live?.latitude ??
-      null;
+      /* ---------------------------------------------
+         FETCH LIVE DATA
+      ---------------------------------------------- */
 
-    const longitude =
-      historyResult?.longitude ??
-      apiLocation?.lng ??
-      apiLocation?.longitude ??
-      apiLocation?.lon ??
-      live?.longitude ??
-      null;
+      const live =
+        await fetchLiveTrainData(
+          number
+        );
 
-    /* -----------------------------------------------
-       ENRICH CURRENT LOCATION
-    ------------------------------------------------ */
 
-    const enrichedLocation = {
-      ...apiLocation,
+      /* ---------------------------------------------
+         SAVE HISTORY
+         AND CALCULATE SPEED
+      ---------------------------------------------- */
 
-      lat:
+      const historyResult =
+        await saveTrainHistory(
+          live
+        );
+
+
+      /* ---------------------------------------------
+         SPEED
+      ---------------------------------------------- */
+
+      const currentSpeedKmh =
+        historyResult?.currentSpeedKmh ??
+        null;
+
+
+      const speedSource =
+        historyResult?.speedSource ||
+        (
+          currentSpeedKmh !==
+            null
+
+            ? "calculated"
+
+            : "unavailable"
+        );
+
+
+      /* ---------------------------------------------
+         GPS
+      ---------------------------------------------- */
+
+      const apiLocation =
+        live?.currentLocation ||
+        {};
+
+
+      const latitude =
+        historyResult?.latitude ??
         apiLocation?.lat ??
-        latitude,
-
-      lng:
-        apiLocation?.lng ??
-        longitude,
-
-      latitude:
         apiLocation?.latitude ??
+        live?.latitude ??
+        null;
+
+
+      const longitude =
+        historyResult?.longitude ??
+        apiLocation?.lng ??
+        apiLocation?.longitude ??
+        apiLocation?.lon ??
+        live?.longitude ??
+        null;
+
+
+      /* ---------------------------------------------
+         ENRICH CURRENT LOCATION
+      ---------------------------------------------- */
+
+      const enrichedLocation = {
+
+        ...apiLocation,
+
+        lat:
+          apiLocation?.lat ??
+          latitude,
+
+        lng:
+          apiLocation?.lng ??
+          longitude,
+
+        latitude:
+          apiLocation?.latitude ??
+          latitude,
+
+        longitude:
+          apiLocation?.longitude ??
+          longitude,
+
+        calculatedSpeedKmh:
+          currentSpeedKmh,
+
+      };
+
+
+      /* ---------------------------------------------
+         ENRICH LIVE OBJECT
+      ---------------------------------------------- */
+
+      const enrichedLive = {
+
+        ...live,
+
+        calculatedCurrentSpeedKmh:
+          currentSpeedKmh,
+
+        currentSpeedKmh:
+          currentSpeedKmh,
+
+        speedSource,
+
         latitude,
 
-      longitude:
-        apiLocation?.longitude ??
         longitude,
 
-      calculatedSpeedKmh:
-        currentSpeedKmh,
-    };
+        currentLocation:
+          enrichedLocation,
 
-    /* -----------------------------------------------
-       ENRICH LIVE OBJECT
-    ------------------------------------------------ */
+      };
 
-    const enrichedLive = {
-      ...live,
 
-      calculatedCurrentSpeedKmh:
-        currentSpeedKmh,
+      /* ---------------------------------------------
+         RESPONSE
+      ---------------------------------------------- */
 
-      currentSpeedKmh:
-        currentSpeedKmh,
+      return res.json({
 
-      speedSource,
+        success:
+          true,
 
-      latitude,
+        data:
+          enrichedLive,
 
-      longitude,
+      });
 
-      currentLocation:
-        enrichedLocation,
-    };
+    } catch (error) {
 
-    /* -----------------------------------------------
-       RESPONSE
-    ------------------------------------------------ */
+      console.error(
+        "[BACKEND] Live train error:",
+        error.message
+      );
 
-    return res.json({
-      success: true,
-      data: enrichedLive,
-    });
 
-  } catch (error) {
-    console.error(
-      "[BACKEND] Live train error:",
-      error.message
-    );
+      return res.status(
+        error.statusCode ||
+        500
+      ).json({
 
-    return res.status(
-      error.statusCode || 500
-    ).json({
-      success: false,
-      message:
-        error.message ||
-        "Unable to fetch live train data.",
-    });
-  }
-};
+        success:
+          false,
+
+        message:
+          error.message ||
+          "Unable to fetch live train data.",
+
+      });
+
+    }
+
+  };
 
 
 /* =====================================================
@@ -346,298 +473,374 @@ export const getLiveTrain = async (
    GET /api/trains/eta/:number
 ===================================================== */
 
-export const getTrainETA = async (
-  req,
-  res
-) => {
-  const { number } = req.params;
+export const getTrainETA =
+  async (
+    req,
+    res
+  ) => {
 
-  /* -----------------------------------------------
-     VALIDATION
-  ------------------------------------------------ */
+    const {
+      number,
+    } = req.params;
 
-  if (!/^\d{5}$/.test(number)) {
-    return res.status(400).json({
-      success: false,
-      message:
-        "Train number must contain exactly 5 digits.",
-    });
-  }
 
-  try {
     /* -----------------------------------------------
-       FETCH LIVE DATA
+       VALIDATION
     ------------------------------------------------ */
 
-    const live =
-      await fetchLiveTrainData(
+    if (
+      !/^\d{5}$/.test(
         number
-      );
+      )
+    ) {
 
-    /* -----------------------------------------------
-       SAVE HISTORY
-    ------------------------------------------------ */
+      return res.status(400).json({
 
-    const historyResult =
-      await saveTrainHistory(
-        live
-      );
+        success:
+          false,
 
-    /* -----------------------------------------------
-       ROUTE
-    ------------------------------------------------ */
+        message:
+          "Train number must contain exactly 5 digits.",
 
-    const route =
-      Array.isArray(live?.route)
-        ? live.route
-        : [];
-
-    /* -----------------------------------------------
-       CURRENT LOCATION
-    ------------------------------------------------ */
-
-    const currentLocation =
-      live?.currentLocation ||
-      {};
-
-    /* -----------------------------------------------
-       CURRENT SEQUENCE
-    ------------------------------------------------ */
-
-    const currentSequence =
-      Number(
-        currentLocation?.sequence ??
-          live?.currentSequence ??
-          0
-      ) || 0;
-
-    /* -----------------------------------------------
-       SEGMENT PROGRESS
-    ------------------------------------------------ */
-
-    const segmentProgress =
-      Number(
-        currentLocation?.segmentProgress ??
-          live?.segmentProgress ??
-          0
-      ) || 0;
-
-    /* -----------------------------------------------
-       DELAY
-    ------------------------------------------------ */
-
-    const delayMinutes =
-      Number(
-        live?.delayMinutes ??
-          live?.delay ??
-          0
-      ) || 0;
-
-    /* -----------------------------------------------
-       CALCULATE ETA
-    ------------------------------------------------ */
-
-    const eta =
-      calculateETA({
-        route,
-        currentLocation,
-        currentSequence,
-        segmentProgress,
-        delayMinutes,
       });
 
-    /* -----------------------------------------------
-       SPEED
-    ------------------------------------------------ */
+    }
 
-    const historySpeed =
-      historyResult?.currentSpeedKmh ??
-      null;
 
-    const apiSpeed =
-      Number(
-        currentLocation?.speedKmh ??
+    try {
+
+      /* ---------------------------------------------
+         FETCH LIVE DATA
+      ---------------------------------------------- */
+
+      const live =
+        await fetchLiveTrainData(
+          number
+        );
+
+
+      /* ---------------------------------------------
+         SAVE HISTORY
+      ---------------------------------------------- */
+
+      const historyResult =
+        await saveTrainHistory(
+          live
+        );
+
+
+      /* ---------------------------------------------
+         ROUTE
+      ---------------------------------------------- */
+
+      const route =
+        Array.isArray(
+          live?.route
+        )
+          ? live.route
+          : [];
+
+
+      /* ---------------------------------------------
+         CURRENT LOCATION
+      ---------------------------------------------- */
+
+      const currentLocation =
+        live?.currentLocation ||
+        {};
+
+
+      /* ---------------------------------------------
+         CURRENT SEQUENCE
+      ---------------------------------------------- */
+
+      const currentSequence =
+        Number(
+          currentLocation?.sequence ??
+          live?.currentSequence ??
+          0
+        ) || 0;
+
+
+      /* ---------------------------------------------
+         SEGMENT PROGRESS
+      ---------------------------------------------- */
+
+      const segmentProgress =
+        Number(
+          currentLocation?.segmentProgress ??
+          live?.segmentProgress ??
+          0
+        ) || 0;
+
+
+      /* ---------------------------------------------
+         DELAY
+      ---------------------------------------------- */
+
+      const delayMinutes =
+        Number(
+          live?.delayMinutes ??
+          live?.delay ??
+          0
+        ) || 0;
+
+
+      /* ---------------------------------------------
+         CALCULATE ETA
+         
+         IMPORTANT:
+         calculateETA() is now async because
+         it calls the ML service.
+      ---------------------------------------------- */
+
+      const eta =
+        await calculateETA({
+
+          route,
+
+          currentLocation,
+
+          currentSequence,
+
+          segmentProgress,
+
+          delayMinutes,
+
+        });
+
+
+      /* ---------------------------------------------
+         SPEED
+      ---------------------------------------------- */
+
+      const historySpeed =
+        historyResult?.currentSpeedKmh ??
+        null;
+
+
+      const apiSpeed =
+        Number(
+          currentLocation?.speedKmh ??
           currentLocation?.speedKmph ??
           live?.currentSpeedKmh ??
           live?.currentSpeed ??
           0
-      ) || 0;
+        ) || 0;
 
-    const currentSpeedKmh =
-      historySpeed !== null
-        ? historySpeed
-        : apiSpeed;
 
-    /* -----------------------------------------------
-       AVERAGE SPEED
-    ------------------------------------------------ */
+      const currentSpeedKmh =
+        historySpeed !==
+        null
 
-    const averageSpeed =
-      Number(
-        live?.avgSpeed ??
+          ? historySpeed
+
+          : apiSpeed;
+
+
+      /* ---------------------------------------------
+         AVERAGE SPEED
+      ---------------------------------------------- */
+
+      const averageSpeed =
+        Number(
+          live?.avgSpeed ??
           live?.averageSpeed ??
           0
-      ) || 0;
+        ) || 0;
 
-    /* -----------------------------------------------
-       MAX SPEED
-    ------------------------------------------------ */
 
-    const maxSpeed =
-      Number(
-        live?.maxSpeed ??
+      /* ---------------------------------------------
+         MAX SPEED
+      ---------------------------------------------- */
+
+      const maxSpeed =
+        Number(
+          live?.maxSpeed ??
           live?.maxSpeedKmh ??
           0
-      ) || 0;
+        ) || 0;
 
-    /* -----------------------------------------------
-       REMAINING DISTANCE
-    ------------------------------------------------ */
 
-    const apiRemainingDistance =
-      Number(
-        live?.remainingDistanceKm ??
+      /* ---------------------------------------------
+         REMAINING DISTANCE
+      ---------------------------------------------- */
+
+      const apiRemainingDistance =
+        Number(
+          live?.remainingDistanceKm ??
           live?.distanceRemainingKm ??
           0
-      ) || 0;
+        ) || 0;
 
-    const etaRemainingDistance =
-      Number(
-        eta?.remainingDistanceKm ??
+
+      const etaRemainingDistance =
+        Number(
+          eta?.remainingDistanceKm ??
           0
-      ) || 0;
+        ) || 0;
 
-    const remainingDistanceKm =
-      apiRemainingDistance > 0
-        ? apiRemainingDistance
-        : etaRemainingDistance;
 
-    /* -----------------------------------------------
-       CURRENT / NEXT STATION
-    ------------------------------------------------ */
+      const remainingDistanceKm =
+        apiRemainingDistance >
+        0
 
-    const currentStation =
-      currentLocation?.stationName ||
-      currentLocation?.name ||
-      live?.previousHalt?.stationName ||
-      "Current Location";
+          ? apiRemainingDistance
 
-    const nextStation =
-      live?.nextHalt?.stationName ||
-      live?.nextHalt?.name ||
-      live?.nextStation?.name ||
-      "Next Station";
+          : etaRemainingDistance;
 
-    /* -----------------------------------------------
-       TRAIN OBJECT
-    ------------------------------------------------ */
 
-    const trainInfo = {
-      number:
-        live?.trainNumber ||
-        live?.number ||
-        number,
+      /* ---------------------------------------------
+         CURRENT / NEXT STATION
+      ---------------------------------------------- */
 
-      name:
-        live?.trainName ||
-        live?.name ||
-        "Train",
+      const currentStation =
+        currentLocation?.stationName ||
+        currentLocation?.name ||
+        live?.previousHalt?.stationName ||
+        "Current Location";
 
-      currentStation,
 
-      nextStation,
+      const nextStation =
+        live?.nextHalt?.stationName ||
+        live?.nextHalt?.name ||
+        live?.nextStation?.name ||
+        "Next Station";
 
-      status:
-        live?.status ||
-        live?.runningStatus ||
-        "Running",
 
-      currentSpeed:
-        currentSpeedKmh,
+      /* ---------------------------------------------
+         TRAIN OBJECT
+      ---------------------------------------------- */
 
-      currentSpeedKmh:
-        currentSpeedKmh,
+      const trainInfo = {
 
-      averageSpeed,
+        number:
+          live?.trainNumber ||
+          live?.number ||
+          number,
 
-      maxSpeed,
+        name:
+          live?.trainName ||
+          live?.name ||
+          "Train",
 
-      currentDelay:
-        Number(
-          eta?.delayMinutes ??
+        currentStation,
+
+        nextStation,
+
+        status:
+          live?.status ||
+          live?.runningStatus ||
+          "Running",
+
+        currentSpeed:
+          currentSpeedKmh,
+
+        currentSpeedKmh:
+          currentSpeedKmh,
+
+        averageSpeed,
+
+        maxSpeed,
+
+        currentDelay:
+          Number(
+            eta?.delayMinutes ??
             delayMinutes
-        ) || 0,
+          ) || 0,
 
-      delayMinutes:
-        Number(
-          eta?.delayMinutes ??
+        delayMinutes:
+          Number(
+            eta?.delayMinutes ??
             delayMinutes
-        ) || 0,
+          ) || 0,
 
-      remainingDistanceKm,
-    };
+        remainingDistanceKm,
 
-    /* -----------------------------------------------
-       PREDICTION OBJECT
-    ------------------------------------------------ */
+      };
 
-    const prediction = {
-      ...eta,
 
-      currentSpeedKmh:
-        currentSpeedKmh,
+      /* ---------------------------------------------
+         PREDICTION OBJECT
+      ---------------------------------------------- */
 
-      currentSpeed:
-        currentSpeedKmh,
+      const prediction = {
 
-      delayMinutes:
-        Number(
-          eta?.delayMinutes ??
+        ...eta,
+
+        currentSpeedKmh:
+          currentSpeedKmh,
+
+        currentSpeed:
+          currentSpeedKmh,
+
+        delayMinutes:
+          Number(
+            eta?.delayMinutes ??
             delayMinutes
-        ) || 0,
+          ) || 0,
 
-      remainingDistanceKm,
-    };
+        remainingDistanceKm,
 
-    /* -----------------------------------------------
-       FINAL RESPONSE
-    ------------------------------------------------ */
+      };
 
-    return res.json({
-      success: true,
 
-      train: trainInfo,
+      /* ---------------------------------------------
+         FINAL RESPONSE
+      ---------------------------------------------- */
 
-      prediction,
+      return res.json({
 
-      meta: {
-        speedSource:
-          historyResult?.speedSource ||
-          (
-            currentSpeedKmh > 0
-              ? "calculated"
-              : "unavailable"
-          ),
+        success:
+          true,
 
-        currentSequence,
+        train:
+          trainInfo,
 
-        segmentProgress,
-      },
-    });
+        prediction,
 
-  } catch (error) {
-    console.error(
-      "[BACKEND] ETA calculation error:",
-      error.message
-    );
+        meta: {
 
-    return res.status(
-      error.statusCode || 500
-    ).json({
-      success: false,
-      message:
-        error.message ||
-        "Unable to calculate train ETA.",
-    });
-  }
-};
+          speedSource:
+            historyResult?.speedSource ||
+            (
+              currentSpeedKmh > 0
+
+                ? "calculated"
+
+                : "unavailable"
+            ),
+
+          currentSequence,
+
+          segmentProgress,
+
+        },
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        "[BACKEND] ETA calculation error:",
+        error.message
+      );
+
+
+      return res.status(
+        error.statusCode ||
+        500
+      ).json({
+
+        success:
+          false,
+
+        message:
+          error.message ||
+          "Unable to calculate train ETA.",
+
+      });
+
+    }
+
+  };
