@@ -1,0 +1,11 @@
+{
+  "name": "railradar-ai",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -n BACKEND,FRONTEND,ML \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\" \"cd ml_service && python -m uvicorn app:app --reload --port 8000\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
