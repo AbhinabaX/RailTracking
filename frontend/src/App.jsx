@@ -28,10 +28,23 @@ import {
 
 
 /* =====================================================
-   API
+   PRODUCTION BACKEND URL
 ===================================================== */
 
+/*
+  Local development:
+    if VITE_API_URL is not set,
+    localhost backend will be used.
+
+  Vercel:
+    Set VITE_API_URL in Vercel Environment Variables.
+
+  Example:
+    https://railtracking-api.onrender.com/api/trains
+*/
+
 const API_URL =
+  import.meta.env.VITE_API_URL ||
   "http://localhost:5000/api/trains";
 
 
@@ -40,7 +53,8 @@ const API_URL =
 ===================================================== */
 
 const getNumber = (value) => {
-  const number = Number(value);
+  const number =
+    Number(value);
 
   return Number.isFinite(number)
     ? number
@@ -53,22 +67,25 @@ const getNumber = (value) => {
 ===================================================== */
 
 const formatDelay = (minutes) => {
-  const total = Math.max(
-    0,
-    Math.round(
-      Number(minutes) || 0
-    )
-  );
+  const total =
+    Math.max(
+      0,
+      Math.round(
+        Number(minutes) || 0
+      )
+    );
 
   if (total < 60) {
     return `${total} min`;
   }
 
-  const hours = Math.floor(
-    total / 60
-  );
+  const hours =
+    Math.floor(
+      total / 60
+    );
 
-  const mins = total % 60;
+  const mins =
+    total % 60;
 
   if (mins === 0) {
     return `${hours} hr`;
@@ -405,8 +422,11 @@ const getStationCoordinates = (
     null;
 
   return {
-    lat: getNumber(lat),
-    lng: getNumber(lng),
+    lat:
+      getNumber(lat),
+
+    lng:
+      getNumber(lng),
   };
 };
 
@@ -442,11 +462,13 @@ const calculateDistanceKm = (
     return null;
   }
 
-  const R = 6371;
+  const R =
+    6371;
 
   const toRadians =
     (value) =>
-      (value * Math.PI) / 180;
+      (value * Math.PI) /
+      180;
 
   const dLat =
     toRadians(c - a);
@@ -551,10 +573,14 @@ const findNearestStation = (
   longitude
 ) => {
   const trainLat =
-    getNumber(latitude);
+    getNumber(
+      latitude
+    );
 
   const trainLng =
-    getNumber(longitude);
+    getNumber(
+      longitude
+    );
 
   if (
     trainLat === null ||
@@ -674,7 +700,8 @@ const normalizeLiveTrain = (
       (station) =>
         station.sequence ===
         currentSequence
-    ) || null;
+    ) ||
+    null;
 
   const currentStation =
     nearestStation?.name ||
@@ -865,7 +892,7 @@ const normalizeLiveTrain = (
 function App() {
 
   /* ===================================================
-     ADMIN URL
+     ADMIN
   =================================================== */
 
   if (
@@ -904,7 +931,7 @@ function App() {
 
 
   /* ===================================================
-     ACTIVE TRAIN NUMBER
+     ACTIVE TRAIN
   =================================================== */
 
   const activeTrainNumber =
@@ -940,6 +967,7 @@ function App() {
     async (
       trainNumber
     ) => {
+
       try {
 
         const response =
@@ -1160,6 +1188,7 @@ function App() {
         return;
       }
 
+
       /* -----------------------------------------------
          ANALYTICS
       ------------------------------------------------ */
@@ -1177,7 +1206,7 @@ function App() {
 
 
       /* -----------------------------------------------
-         FIVE DIGIT TRAIN NUMBER
+         FIVE DIGIT TRAIN
       ------------------------------------------------ */
 
       if (
@@ -1272,6 +1301,7 @@ function App() {
           data.trains[0];
 
         setSelectedTrain({
+
           ...train,
 
           number:
@@ -1401,7 +1431,7 @@ function App() {
 
   /* ===================================================
      RADAR ANALYTICS
-  =================================================== */
+===================================================== */
 
   useEffect(() => {
 
@@ -1431,7 +1461,7 @@ function App() {
 
   /* ===================================================
      ETA ANALYTICS
-  =================================================== */
+===================================================== */
 
   useEffect(() => {
 
@@ -1461,7 +1491,7 @@ function App() {
 
   /* ===================================================
      HANDLERS
-  =================================================== */
+===================================================== */
 
   const handleSearch =
     async () => {
@@ -1469,6 +1499,7 @@ function App() {
       await searchTrain(
         search
       );
+
     };
 
 
@@ -1484,6 +1515,7 @@ function App() {
       await searchTrain(
         trainNumber
       );
+
     };
 
 
@@ -1499,7 +1531,7 @@ function App() {
 
   /* ===================================================
      RENDER
-  =================================================== */
+===================================================== */
 
   return (
     <div className="app">
@@ -1565,6 +1597,7 @@ function App() {
 
         <button
           className="nav-button"
+
           onClick={() =>
             document
               .getElementById(
@@ -1629,8 +1662,6 @@ function App() {
             </p>
 
 
-            {/* SEARCH */}
-
             <div className="search-card">
 
               <div className="search-input-wrapper">
@@ -1646,16 +1677,20 @@ function App() {
                     search
                   }
 
-                  onChange={(e) =>
+                  onChange={(
+                    event
+                  ) =>
                     setSearch(
-                      e.target.value
+                      event.target.value
                     )
                   }
 
-                  onKeyDown={(e) => {
+                  onKeyDown={(
+                    event
+                  ) => {
 
                     if (
-                      e.key ===
+                      event.key ===
                       "Enter"
                     ) {
                       handleSearch();
@@ -1895,7 +1930,8 @@ function App() {
                       position:
                         "absolute",
 
-                      inset: 0,
+                      inset:
+                        0,
 
                       display:
                         "grid",
@@ -2021,24 +2057,24 @@ function App() {
             selectedTrain ===
               "not-found" && (
 
-              <div className="result-card not-found">
+            <div className="result-card not-found">
 
-                <div className="result-icon">
-                  🔍
-                </div>
-
-                <h2>
-                  Train not found
-                </h2>
-
-                <p>
-                  Try another 5-digit
-                  train number.
-                </p>
-
+              <div className="result-icon">
+                🔍
               </div>
 
-            )}
+              <h2>
+                Train not found
+              </h2>
+
+              <p>
+                Try another 5-digit
+                train number.
+              </p>
+
+            </div>
+
+          )}
 
 
           {!error &&
@@ -2046,222 +2082,222 @@ function App() {
             selectedTrain !==
               "not-found" && (
 
-              <>
+            <>
 
-                <div className="result-card">
+              <div className="result-card">
 
-                  <div className="result-top">
+                <div className="result-top">
 
-                    <div>
+                  <div>
 
-                      <span>
-                        SEARCH RESULT
-                      </span>
+                    <span>
+                      SEARCH RESULT
+                    </span>
 
-                      <h2>
-                        {selectedTrain.number}
-                        {" "}
-                        {selectedTrain.name}
-                      </h2>
-
-                    </div>
-
-
-                    <div className="live-pill">
-
-                      <span></span>
-
-                      {selectedTrain.status}
-
-                    </div>
+                    <h2>
+                      {selectedTrain.number}
+                      {" "}
+                      {selectedTrain.name}
+                    </h2>
 
                   </div>
 
 
-                  <div className="result-route">
+                  <div className="live-pill">
 
-                    <div>
+                    <span></span>
 
-                      <small>
-                        FROM
-                      </small>
-
-                      <strong>
-                        {selectedTrain.from}
-                      </strong>
-
-                    </div>
-
-
-                    <div className="route-arrow">
-                      →
-                    </div>
-
-
-                    <div>
-
-                      <small>
-                        TO
-                      </small>
-
-                      <strong>
-                        {selectedTrain.to}
-                      </strong>
-
-                    </div>
-
-                  </div>
-
-
-                  <div className="result-info-grid">
-
-                    <div>
-
-                      <small>
-                        Current Station
-                      </small>
-
-                      <strong>
-                        {selectedTrain.current}
-                      </strong>
-
-                    </div>
-
-
-                    <div>
-
-                      <small>
-                        Next Station
-                      </small>
-
-                      <strong>
-                        {selectedTrain.next}
-                      </strong>
-
-                    </div>
-
-
-                    <div>
-
-                      <small>
-                        Current Speed
-                      </small>
-
-                      <strong>
-
-                        {selectedTrain.currentSpeed !==
-                          null
-
-                          ? `${Math.round(
-                              selectedTrain.currentSpeed
-                            )} km/h`
-
-                          : "Calculating..."}
-
-                      </strong>
-
-                    </div>
-
-
-                    <div>
-
-                      <small>
-                        Average Speed
-                      </small>
-
-                      <strong>
-
-                        {selectedTrain.avgSpeed !==
-                          null
-
-                          ? `${Math.round(
-                              selectedTrain.avgSpeed
-                            )} km/h`
-
-                          : "--"}
-
-                      </strong>
-
-                    </div>
-
-
-                    <div>
-
-                      <small>
-                        Max Speed
-                      </small>
-
-                      <strong>
-
-                        {selectedTrain.maxSpeed !==
-                          null
-
-                          ? `${Math.round(
-                              selectedTrain.maxSpeed
-                            )} km/h`
-
-                          : "--"}
-
-                      </strong>
-
-                    </div>
-
-
-                    <div>
-
-                      <small>
-                        Delay
-                      </small>
-
-                      <strong className="delay">
-
-                        +
-                        {formatDelay(
-                          selectedTrain.delay
-                        )}
-
-                      </strong>
-
-                    </div>
-
-
-                    <div>
-
-                      <small>
-                        Estimated Arrival
-                      </small>
-
-                      <strong className="eta">
-
-                        {selectedTrain.arrival}
-
-                      </strong>
-
-                    </div>
+                    {selectedTrain.status}
 
                   </div>
 
                 </div>
 
 
-                <TrainDetails
-                  train={{
-                    ...selectedTrain,
+                <div className="result-route">
 
-                    delayText:
-                      `+${formatDelay(
+                  <div>
+
+                    <small>
+                      FROM
+                    </small>
+
+                    <strong>
+                      {selectedTrain.from}
+                    </strong>
+
+                  </div>
+
+
+                  <div className="route-arrow">
+                    →
+                  </div>
+
+
+                  <div>
+
+                    <small>
+                      TO
+                    </small>
+
+                    <strong>
+                      {selectedTrain.to}
+                    </strong>
+
+                  </div>
+
+                </div>
+
+
+                <div className="result-info-grid">
+
+                  <div>
+
+                    <small>
+                      Current Station
+                    </small>
+
+                    <strong>
+                      {selectedTrain.current}
+                    </strong>
+
+                  </div>
+
+
+                  <div>
+
+                    <small>
+                      Next Station
+                    </small>
+
+                    <strong>
+                      {selectedTrain.next}
+                    </strong>
+
+                  </div>
+
+
+                  <div>
+
+                    <small>
+                      Current Speed
+                    </small>
+
+                    <strong>
+
+                      {selectedTrain.currentSpeed !==
+                        null
+
+                        ? `${Math.round(
+                            selectedTrain.currentSpeed
+                          )} km/h`
+
+                        : "Calculating..."}
+
+                    </strong>
+
+                  </div>
+
+
+                  <div>
+
+                    <small>
+                      Average Speed
+                    </small>
+
+                    <strong>
+
+                      {selectedTrain.avgSpeed !==
+                        null
+
+                        ? `${Math.round(
+                            selectedTrain.avgSpeed
+                          )} km/h`
+
+                        : "--"}
+
+                    </strong>
+
+                  </div>
+
+
+                  <div>
+
+                    <small>
+                      Max Speed
+                    </small>
+
+                    <strong>
+
+                      {selectedTrain.maxSpeed !==
+                        null
+
+                        ? `${Math.round(
+                            selectedTrain.maxSpeed
+                          )} km/h`
+
+                        : "--"}
+
+                    </strong>
+
+                  </div>
+
+
+                  <div>
+
+                    <small>
+                      Delay
+                    </small>
+
+                    <strong className="delay">
+
+                      +
+                      {formatDelay(
                         selectedTrain.delay
-                      )}`,
-                  }}
+                      )}
 
-                  onClose={
-                    closeTrainDetails
-                  }
-                />
+                    </strong>
 
-              </>
+                  </div>
 
-            )}
+
+                  <div>
+
+                    <small>
+                      Estimated Arrival
+                    </small>
+
+                    <strong className="eta">
+
+                      {selectedTrain.arrival}
+
+                    </strong>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+
+              <TrainDetails
+                train={{
+                  ...selectedTrain,
+
+                  delayText:
+                    `+${formatDelay(
+                      selectedTrain.delay
+                    )}`,
+                }}
+
+                onClose={
+                  closeTrainDetails
+                }
+              />
+
+            </>
+
+          )}
 
         </section>
 
@@ -2392,7 +2428,7 @@ function App() {
                     style={{
                       width:
                         selectedTrain.segmentProgress !==
-                          null
+                        null
 
                           ? `${
                               Math.max(
@@ -2663,7 +2699,7 @@ function App() {
 
 
         {/* =================================================
-           ROUTE TIMELINE
+           ROUTE
         ================================================= */}
 
         <RouteTimeline
@@ -2683,9 +2719,6 @@ function App() {
 
         {/* =================================================
            AI ETA
-           
-           key makes sure ETA completely reloads
-           when a different train is selected.
         ================================================= */}
 
         {activeTrainNumber ? (

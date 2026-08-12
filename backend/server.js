@@ -24,24 +24,151 @@ const app =
 
 
 /* =====================================================
-   MIDDLEWARE
+   CORS CONFIGURATION
 ===================================================== */
 
 /*
-  Allow frontend to call backend API.
+  Allowed frontend origins:
+
+  Local:
+  - http://localhost:5173
+  - http://localhost:4173
+
+  Production:
+  - https://rail-tracking-seven.vercel.app
+  - other Vercel preview/deployment URLs
 */
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:4173",
+  "https://rail-tracking-seven.vercel.app",
+];
+
+
+const corsOptions = {
+
+  origin: (
+    origin,
+    callback
+  ) => {
+
+    /*
+      Allow requests without an Origin header.
+      Example: direct browser/API/server requests.
+    */
+
+    if (!origin) {
+      return callback(
+        null,
+        true
+      );
+    }
+
+
+    /*
+      Allow exact known origins.
+    */
+
+    if (
+      allowedOrigins.includes(
+        origin
+      )
+    ) {
+
+      return callback(
+        null,
+        true
+      );
+    }
+
+
+    /*
+      Allow Vercel preview/deployment domains
+      belonging to this project.
+    */
+
+    if (
+      /^https:\/\/rail-tracking-[a-z0-9-]+\.vercel\.app$/i.test(
+        origin
+      )
+    ) {
+
+      return callback(
+        null,
+        true
+      );
+    }
+
+
+    /*
+      Reject unknown origins.
+    */
+
+    return callback(
+      new Error(
+        "CORS policy: origin not allowed."
+      )
+    );
+
+  },
+
+
+  methods: [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+  ],
+
+
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "x-visitor-id",
+  ],
+
+
+  credentials:
+    false,
+
+
+  optionsSuccessStatus:
+    204,
+
+};
+
+
+/* =====================================================
+   APPLY CORS
+===================================================== */
+
 app.use(
-  cors()
+  cors(
+    corsOptions
+  )
 );
 
 
-/*
-  Parse JSON request body.
-*/
+/* =====================================================
+   JSON BODY PARSER
+===================================================== */
 
 app.use(
   express.json()
+);
+
+
+/* =====================================================
+   URL ENCODED BODY
+===================================================== */
+
+app.use(
+  express.urlencoded({
+    extended: true,
+  })
 );
 
 
@@ -56,16 +183,6 @@ connectDB();
    TRAIN ROUTES
 ===================================================== */
 
-/*
-  Examples:
-
-  GET /api/trains
-  GET /api/trains/search?q=12301
-  GET /api/trains/live/12301
-  GET /api/trains/eta/12301
-  GET /api/trains/12301
-*/
-
 app.use(
   "/api/trains",
   trainRoutes
@@ -75,12 +192,6 @@ app.use(
 /* =====================================================
    ANALYTICS ROUTES
 ===================================================== */
-
-/*
-  POST /api/analytics/event
-
-  GET /api/analytics/dashboard
-*/
 
 app.use(
   "/api/analytics",
@@ -98,18 +209,46 @@ app.get(
 
     return res.json({
 
-      success: true,
+      success:
+        true,
 
       message:
         "RailTracking backend is running.",
 
+      server:
+        "Render",
+
       api: {
+
         trains:
           "/api/trains",
 
         analytics:
           "/api/analytics",
+
       },
+
+    });
+
+  }
+);
+
+
+/* =====================================================
+   API HEALTH CHECK
+===================================================== */
+
+app.get(
+  "/api/health",
+  (req, res) => {
+
+    return res.json({
+
+      success:
+        true,
+
+      message:
+        "RailTracking API is healthy.",
 
     });
 
@@ -124,9 +263,12 @@ app.get(
 app.use(
   (req, res) => {
 
-    return res.status(404).json({
+    return res.status(
+      404
+    ).json({
 
-      success: false,
+      success:
+        false,
 
       message:
         "API route not found.",
@@ -154,15 +296,43 @@ app.use(
 
     console.error(
       "[BACKEND ERROR]",
-      error
+      error.message
     );
 
 
+    /*
+      CORS error
+    */
+
+    if (
+      error.message &&
+      error.message.startsWith(
+        "CORS policy"
+      )
+    ) {
+
+      return res.status(
+        403
+      ).json({
+
+        success:
+          false,
+
+        message:
+          error.message,
+
+      });
+
+    }
+
+
     return res.status(
-      error.statusCode || 500
+      error.statusCode ||
+        500
     ).json({
 
-      success: false,
+      success:
+        false,
 
       message:
         error.message ||
@@ -179,7 +349,9 @@ app.use(
 ===================================================== */
 
 const PORT =
-  Number(process.env.PORT) || 5000;
+  Number(
+    process.env.PORT
+  ) || 5000;
 
 
 /* =====================================================
@@ -195,15 +367,15 @@ app.listen(
     );
 
     console.log(
-      `RailTracking backend running on http://localhost:${PORT}`
+      `RailTracking backend running on port ${PORT}`
     );
 
     console.log(
-      `Train API: http://localhost:${PORT}/api/trains`
+      `Train API: /api/trains`
     );
 
     console.log(
-      `Analytics API: http://localhost:${PORT}/api/analytics`
+      `Analytics API: /api/analytics`
     );
 
     console.log(
