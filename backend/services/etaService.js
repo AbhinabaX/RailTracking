@@ -8,12 +8,6 @@ const EARTH_RADIUS_KM = 6371;
 
 /* =====================================================
    ML SERVICE URL
-
-   Render:
-   ML_SERVICE_URL=https://railtracking-ml.onrender.com
-
-   Local:
-   If not available, heuristic ETA will be used.
 ===================================================== */
 
 const ML_SERVICE_URL =
@@ -149,10 +143,8 @@ const calculateRemainingDistance = ({
     currentIndex =
       Math.max(
         0,
-
         Math.min(
           validRoute.length - 2,
-
           sequence - 1
         )
       );
@@ -175,19 +167,16 @@ const calculateRemainingDistance = ({
 
 
   /* -------------------------------------------------
-     Distance from current GPS position
-     to next station
+     CURRENT GPS → NEXT STATION
   ------------------------------------------------- */
 
   if (
     Number.isFinite(
       currentLat
     ) &&
-
     Number.isFinite(
       currentLng
     ) &&
-
     validRoute[
       currentIndex + 1
     ]
@@ -195,34 +184,27 @@ const calculateRemainingDistance = ({
 
     distance +=
       getDistanceKm(
-
         currentLat,
-
         currentLng,
-
         validRoute[
           currentIndex + 1
         ].lat,
-
         validRoute[
           currentIndex + 1
         ].lng
-
       );
 
   } else {
 
     /* -------------------------------------------------
-       Fallback using segment progress
+       FALLBACK USING SEGMENT PROGRESS
     ------------------------------------------------- */
 
     const progress =
       Math.max(
         0,
-
         Math.min(
           1,
-
           Number(
             segmentProgress
           ) || 0
@@ -234,7 +216,6 @@ const calculateRemainingDistance = ({
       validRoute[
         currentIndex
       ] &&
-
       validRoute[
         currentIndex + 1
       ]
@@ -242,23 +223,18 @@ const calculateRemainingDistance = ({
 
       const segmentDistance =
         getDistanceKm(
-
           validRoute[
             currentIndex
           ].lat,
-
           validRoute[
             currentIndex
           ].lng,
-
           validRoute[
             currentIndex + 1
           ].lat,
-
           validRoute[
             currentIndex + 1
           ].lng
-
         );
 
 
@@ -270,7 +246,7 @@ const calculateRemainingDistance = ({
 
 
   /* -------------------------------------------------
-     Remaining full segments
+     REMAINING FULL SEGMENTS
   ------------------------------------------------- */
 
   for (
@@ -285,19 +261,14 @@ const calculateRemainingDistance = ({
 
     distance +=
       getDistanceKm(
-
         validRoute[i].lat,
-
         validRoute[i].lng,
-
         validRoute[
           i + 1
         ].lat,
-
         validRoute[
           i + 1
         ].lng
-
       );
   }
 
@@ -324,26 +295,46 @@ const getMLPrediction = async ({
     new AbortController();
 
 
+  /*
+    ML model loading on Render can take some time,
+    especially when the free service wakes from sleep.
+    We therefore allow up to 60 seconds.
+  */
+
   const timeout =
     setTimeout(
       () => {
+
         controller.abort();
+
       },
-      8000
+      60000
     );
 
 
   try {
 
+    const predictionUrl =
+      `${ML_SERVICE_URL}/predict`;
+
+
+    console.log(
+      `[ETA] Calling ML service: ${predictionUrl}`
+    );
+
+
     const response =
       await fetch(
-        `${ML_SERVICE_URL}/predict`,
+        predictionUrl,
         {
           method:
             "POST",
 
           headers: {
             "Content-Type":
+              "application/json",
+
+            Accept:
               "application/json",
           },
 
@@ -387,7 +378,25 @@ const getMLPrediction = async ({
       !response.ok
     ) {
 
+      let errorBody =
+        null;
+
+      try {
+
+        errorBody =
+          await response.json();
+
+      } catch {
+
+        errorBody =
+          null;
+
+      }
+
+
       throw new Error(
+        errorBody?.detail ||
+        errorBody?.message ||
         `ML service returned HTTP ${response.status}`
       );
     }
@@ -395,6 +404,11 @@ const getMLPrediction = async ({
 
     const data =
       await response.json();
+
+
+    console.log(
+      "[ETA] ML service response received."
+    );
 
 
     if (
@@ -422,7 +436,7 @@ const getMLPrediction = async ({
     ) {
 
       throw new Error(
-        "Invalid ML prediction."
+        "ML service returned an invalid predictedMinutes value."
       );
     }
 
@@ -454,11 +468,27 @@ const getMLPrediction = async ({
 
     };
 
+  } catch (error) {
+
+    if (
+      error?.name ===
+      "AbortError"
+    ) {
+
+      throw new Error(
+        "ML service request timed out after 60 seconds."
+      );
+    }
+
+
+    throw error;
+
   } finally {
 
     clearTimeout(
       timeout
     );
+
   }
 };
 
@@ -475,13 +505,15 @@ const calculateHeuristicETA = ({
 
   const safeSpeed =
     Math.max(
-      Number(currentSpeed) || 0,
+      Number(
+        currentSpeed
+      ) || 0,
       45
     );
 
 
   /* -------------------------------------------------
-     Base travel time
+     BASE TRAVEL TIME
   ------------------------------------------------- */
 
   const baseMinutes =
@@ -496,7 +528,7 @@ const calculateHeuristicETA = ({
 
 
   /* -------------------------------------------------
-     Operational buffer
+     OPERATIONAL BUFFER
   ------------------------------------------------- */
 
   const operationalBuffer =
@@ -513,7 +545,7 @@ const calculateHeuristicETA = ({
 
 
   /* -------------------------------------------------
-     Existing delay
+     EFFECTIVE DELAY
   ------------------------------------------------- */
 
   const effectiveDelay =
@@ -524,7 +556,6 @@ const calculateHeuristicETA = ({
         Number(
           delayMinutes
         ) || 0,
-
         120
       )
     );
@@ -532,19 +563,13 @@ const calculateHeuristicETA = ({
 
   const estimatedMinutes =
     Math.max(
-
       1,
 
       Math.round(
-
         baseMinutes +
-
         operationalBuffer +
-
         effectiveDelay
-
       )
-
     );
 
 
@@ -570,7 +595,7 @@ const calculateHeuristicETA = ({
 
 
 /* =====================================================
-   CALCULATE HEURISTIC CONFIDENCE
+   HEURISTIC CONFIDENCE
 ===================================================== */
 
 const calculateConfidence = ({
@@ -579,7 +604,8 @@ const calculateConfidence = ({
   remainingDistance,
 }) => {
 
-  let confidence = 85;
+  let confidence =
+    85;
 
 
   if (
@@ -593,6 +619,7 @@ const calculateConfidence = ({
   ) {
 
     confidence -= 8;
+
   }
 
 
@@ -607,6 +634,7 @@ const calculateConfidence = ({
   ) {
 
     confidence -= 5;
+
   }
 
 
@@ -621,6 +649,7 @@ const calculateConfidence = ({
   ) {
 
     confidence -= 4;
+
   }
 
 
@@ -647,6 +676,10 @@ export const calculateETA =
     delayMinutes = 0,
   }) => {
 
+    /* -------------------------------------------------
+       CURRENT SPEED
+    ------------------------------------------------- */
+
     const currentSpeed =
       Number(
         currentLocation?.speedKmh ??
@@ -662,25 +695,20 @@ export const calculateETA =
 
 
     /* -------------------------------------------------
-       Remaining distance
+       REMAINING DISTANCE
     ------------------------------------------------- */
 
     const remainingDistance =
       calculateRemainingDistance({
-
         route,
-
         currentLocation,
-
         currentSequence,
-
         segmentProgress,
-
       });
 
 
     /* -------------------------------------------------
-       Try ML prediction first
+       TRY ML PREDICTION FIRST
     ------------------------------------------------- */
 
     try {
@@ -726,13 +754,14 @@ export const calculateETA =
 
 
       /* -------------------------------------------------
-         ML confidence
+         ML CONFIDENCE
 
-         Lower MAE = higher confidence.
-         This is a derived score, not a probability.
+         Derived from model MAE.
+         This is NOT a calibrated probability.
       ------------------------------------------------- */
 
-      let confidence = 88;
+      let confidence =
+        88;
 
 
       if (
@@ -768,53 +797,45 @@ export const calculateETA =
       }
 
 
+      console.log(
+        `[ETA] ML prediction successful | minutes: ${estimatedMinutes}`
+      );
+
+
       return {
 
         remainingDistanceKm:
           remainingDistance,
 
-
         currentSpeedKmh:
           safeCurrentSpeed,
 
-
         baseTravelMinutes:
           null,
-
 
         delayMinutes:
           Number(
             delayMinutes
           ) || 0,
 
-
         operationalBufferMinutes:
           null,
 
-
         estimatedMinutes,
 
-
         confidence,
-
 
         estimatedArrivalISO:
           etaDate.toISOString(),
 
-
-        /* ML information */
-
         predictionSource:
           "ml",
-
 
         modelMAE:
           mlResult.modelMAE,
 
-
         trainedAt:
           mlResult.trainedAt,
-
 
         mlServiceUrl:
           ML_SERVICE_URL,
@@ -824,15 +845,14 @@ export const calculateETA =
     } catch (mlError) {
 
       console.warn(
-        "[ETA] ML prediction unavailable. Using heuristic fallback:",
-        mlError.message
+        `[ETA] ML prediction unavailable. Using heuristic fallback: ${mlError.message}`
       );
 
     }
 
 
     /* -------------------------------------------------
-       ML unavailable -> heuristic fallback
+       ML FAILED → HEURISTIC FALLBACK
     ------------------------------------------------- */
 
     const fallback =
@@ -873,52 +893,44 @@ export const calculateETA =
       );
 
 
+    console.log(
+      `[ETA] Heuristic ETA used | minutes: ${fallback.estimatedMinutes}`
+    );
+
+
     return {
 
       remainingDistanceKm:
         remainingDistance,
 
-
       currentSpeedKmh:
         safeCurrentSpeed,
-
 
       baseTravelMinutes:
         fallback.baseMinutes,
 
-
       delayMinutes:
         fallback.delayMinutes,
-
 
       operationalBufferMinutes:
         fallback.operationalBufferMinutes,
 
-
       estimatedMinutes:
         fallback.estimatedMinutes,
 
-
       confidence,
-
 
       estimatedArrivalISO:
         etaDate.toISOString(),
 
-
-      /* Explicitly say ML wasn't used */
-
       predictionSource:
         "heuristic",
-
 
       modelMAE:
         null,
 
-
       trainedAt:
         null,
-
 
       mlServiceUrl:
         ML_SERVICE_URL,
