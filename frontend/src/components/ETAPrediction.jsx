@@ -1,7 +1,6 @@
 import {
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 
@@ -298,10 +297,6 @@ function ETAPrediction({
   ] = useState("");
 
 
-  const isFetchingRef =
-    useRef(false);
-
-
   /* ===================================================
      FETCH LIVE DATA
 
@@ -310,22 +305,19 @@ function ETAPrediction({
   =================================================== */
 
   const fetchLive =
-    async (showLoading = false) => {
+    async () => {
 
-      if (!trainNumber || isFetchingRef.current) {
+      if (!trainNumber) {
         return;
       }
 
-      isFetchingRef.current = true;
 
       try {
 
         setError("");
 
 
-        if (showLoading) {
-          setLoading(true);
-        }
+        setLoading(true);
 
 
         const response =
@@ -389,23 +381,16 @@ function ETAPrediction({
         );
 
 
-        // Keep the last successful data during background refresh failures.
-        // Only show the error when there is no previous live data.
-        if (!live) {
-          setError(
-            err.message ||
-              "Unable to calculate ETA."
-          );
-        }
+        /* Keep the last successful live data on transient API errors. */
+        setError(
+          err.message ||
+            "Live data temporarily unavailable."
+        );
 
 
       } finally {
 
-        if (showLoading) {
-          setLoading(false);
-        }
-
-        isFetchingRef.current = false;
+        setLoading(false);
 
       }
     };
@@ -417,13 +402,7 @@ function ETAPrediction({
 
   useEffect(() => {
 
-    if (!trainNumber) {
-      return;
-    }
-
-    setError("");
-    setLive(null);
-    fetchLive(true);
+    fetchLive();
 
   }, [
     trainNumber,
@@ -445,12 +424,10 @@ function ETAPrediction({
       window.setInterval(
         () => {
 
-          // Background refresh: keep showing the last
-          // successful data while the new request runs.
-          fetchLive(false);
+          fetchLive();
 
         },
-        5000
+        30000
       );
 
 
