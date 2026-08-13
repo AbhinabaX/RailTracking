@@ -1,12 +1,10 @@
 import {
   useEffect,
-  useMemo,
   useState,
 } from "react";
 
-
 /* =====================================================
-   API
+   PRODUCTION API
 ===================================================== */
 
 const API_BASE =
@@ -14,47 +12,15 @@ const API_BASE =
 
 
 /* =====================================================
-   NUMBER
+   NUMBER HELPER
 ===================================================== */
 
-const num = (value) => {
-  const n = Number(value);
+const toNumber = (value) => {
+  const number = Number(value);
 
-  return Number.isFinite(n)
-    ? n
+  return Number.isFinite(number)
+    ? number
     : null;
-};
-
-
-/* =====================================================
-   DELAY FORMAT
-===================================================== */
-
-const formatDelay = (minutes) => {
-  const total = Math.max(
-    0,
-    Math.round(
-      Number(minutes) || 0
-    )
-  );
-
-  if (total < 60) {
-    return `${total} min`;
-  }
-
-  const hours =
-    Math.floor(
-      total / 60
-    );
-
-  const mins =
-    total % 60;
-
-  if (mins === 0) {
-    return `${hours} hr`;
-  }
-
-  return `${hours} hr ${mins} min`;
 };
 
 
@@ -72,207 +38,60 @@ const formatTime = (value) => {
     return "--";
   }
 
-  const text =
-    String(value).trim();
-
-
-  /* Already like 10:42 PM */
+  const date = new Date(value);
 
   if (
-    /AM|PM/i.test(text)
+    !Number.isNaN(
+      date.getTime()
+    )
   ) {
-    return text;
-  }
-
-
-  /* HH:mm */
-
-  const match =
-    text.match(
-      /^(\d{1,2}):(\d{2})(?::\d{2})?$/
+    return date.toLocaleTimeString(
+      [],
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+      }
     );
-
-
-  if (match) {
-    let hour =
-      Number(match[1]);
-
-    const minute =
-      Number(match[2]);
-
-    const suffix =
-      hour >= 12
-        ? "PM"
-        : "AM";
-
-    hour =
-      hour % 12 || 12;
-
-    return `${String(hour).padStart(
-      2,
-      "0"
-    )}:${String(minute).padStart(
-      2,
-      "0"
-    )} ${suffix}`;
   }
 
-
-  const date =
-    new Date(value);
-
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return "--";
-  }
-
-
-  return date.toLocaleTimeString(
-    [],
-    {
-      hour: "2-digit",
-      minute: "2-digit",
-    }
-  );
+  return String(value);
 };
 
 
 /* =====================================================
-   GET ETA FROM ROUTE
+   DELAY FORMAT
 ===================================================== */
 
-const getRouteETA = (
-  route,
-  delay
-) => {
-  if (
-    !Array.isArray(route) ||
-    route.length === 0
-  ) {
-    return null;
-  }
-
-
-  const last =
-    route[
-      route.length - 1
-    ];
-
-
-  const scheduled =
-    last?.scheduledArrival ||
-    last?.expectedArrival ||
-    last?.arrival ||
-    null;
-
-
-  if (!scheduled) {
-    return null;
-  }
-
-
-  const date =
-    new Date(scheduled);
-
-
-  if (
-    Number.isNaN(
-      date.getTime()
+const formatDelay = (value) => {
+  const minutes = Math.max(
+    0,
+    Math.round(
+      Number(value) || 0
     )
-  ) {
-    return null;
-  }
-
-
-  /*
-    Apply current delay to scheduled
-    destination arrival.
-  */
-
-  date.setMinutes(
-    date.getMinutes() +
-      Number(delay || 0)
   );
 
-
-  return formatTime(
-    date
-  );
-};
-
-
-/* =====================================================
-   CALCULATE FALLBACK ETA
-
-   remainingDistance / usableSpeed
-===================================================== */
-
-const calculateFallbackETA = ({
-  remainingDistance,
-  currentSpeed,
-  averageSpeed,
-}) => {
-
-  if (
-    remainingDistance === null ||
-    remainingDistance <= 0
-  ) {
-    return null;
+  if (minutes < 60) {
+    return `${minutes} min`;
   }
-
-
-  /*
-    Current speed is not reliable when
-    it is 0/unavailable.
-
-    Therefore use average speed in
-    that case.
-  */
-
-  const usableSpeed =
-    currentSpeed !== null &&
-    currentSpeed > 5
-      ? currentSpeed
-      : averageSpeed !== null &&
-        averageSpeed > 5
-      ? averageSpeed
-      : null;
-
-
-  if (
-    usableSpeed === null
-  ) {
-    return null;
-  }
-
 
   const hours =
-    remainingDistance /
-    usableSpeed;
+    Math.floor(
+      minutes / 60
+    );
 
+  const remaining =
+    minutes % 60;
 
-  const milliseconds =
-    hours *
-    60 *
-    60 *
-    1000;
+  if (remaining === 0) {
+    return `${hours} hr`;
+  }
 
-
-  return formatTime(
-    new Date(
-      Date.now() +
-        milliseconds
-    )
-  );
+  return `${hours} hr ${remaining} min`;
 };
 
 
 /* =====================================================
-   ETA PREDICTION
+   ETA PREDICTION COMPONENT
 ===================================================== */
 
 function ETAPrediction({
@@ -298,16 +117,14 @@ function ETAPrediction({
 
 
   /* ===================================================
-     FETCH LIVE DATA
-
-     We use the same working endpoint as
-     the main train tracking section.
+     FETCH TRAIN DATA
   =================================================== */
 
   const fetchLive =
     async () => {
 
       if (!trainNumber) {
+        setLoading(false);
         return;
       }
 
@@ -315,19 +132,24 @@ function ETAPrediction({
       try {
 
         setError("");
-
-
         setLoading(true);
 
 
         const response =
           await fetch(
-            `${API_BASE}/live/${trainNumber}`
+            `${API_BASE}/live/${trainNumber}`,
+            {
+              method: "GET",
+
+              headers: {
+                Accept:
+                  "application/json",
+              },
+            }
           );
 
 
-        let payload =
-          null;
+        let payload = null;
 
 
         try {
@@ -337,9 +159,7 @@ function ETAPrediction({
 
         } catch {
 
-          payload =
-            null;
-
+          payload = null;
         }
 
 
@@ -347,10 +167,9 @@ function ETAPrediction({
 
           throw new Error(
             payload?.message ||
-              payload?.error?.message ||
-              "Unable to fetch live train data."
+            payload?.error?.message ||
+            "Unable to fetch train data."
           );
-
         }
 
 
@@ -362,16 +181,12 @@ function ETAPrediction({
         if (!data) {
 
           throw new Error(
-            "Live train data unavailable."
+            "Train data unavailable."
           );
-
         }
 
 
-        setLive(
-          data
-        );
-
+        setLive(data);
 
       } catch (err) {
 
@@ -381,12 +196,15 @@ function ETAPrediction({
         );
 
 
-        /* Keep the last successful live data on transient API errors. */
+        /*
+           IMPORTANT:
+           Do NOT clear previous live data.
+        */
+
         setError(
           err.message ||
-            "Live data temporarily unavailable."
+          "Live data temporarily unavailable."
         );
-
 
       } finally {
 
@@ -397,20 +215,18 @@ function ETAPrediction({
 
 
   /* ===================================================
-     INITIAL FETCH
+     INITIAL LOAD
   =================================================== */
 
   useEffect(() => {
 
     fetchLive();
 
-  }, [
-    trainNumber,
-  ]);
+  }, [trainNumber]);
 
 
   /* ===================================================
-     AUTO REFRESH
+     AUTO REFRESH - 30 SECONDS
   =================================================== */
 
   useEffect(() => {
@@ -423,29 +239,31 @@ function ETAPrediction({
     const timer =
       window.setInterval(
         () => {
-
           fetchLive();
-
         },
         30000
       );
 
 
-    return () =>
+    return () => {
+
       window.clearInterval(
         timer
       );
 
-  }, [
-    trainNumber,
-  ]);
+    };
+
+  }, [trainNumber]);
 
 
   /* ===================================================
      LOADING
   =================================================== */
 
-  if (loading) {
+  if (
+    loading &&
+    !live
+  ) {
 
     return (
       <section
@@ -506,12 +324,12 @@ function ETAPrediction({
 
 
   /* ===================================================
-     ERROR
+     NO DATA
   =================================================== */
 
   if (
-    error &&
-    !live
+    !live &&
+    error
   ) {
 
     return (
@@ -541,9 +359,7 @@ function ETAPrediction({
 
           <button
             className="outline-button"
-            onClick={
-              fetchLive
-            }
+            onClick={fetchLive}
           >
             Retry
           </button>
@@ -556,7 +372,7 @@ function ETAPrediction({
 
 
   /* ===================================================
-     BASIC TRAIN DATA
+     BASIC DATA
   =================================================== */
 
   const currentLocation =
@@ -566,7 +382,8 @@ function ETAPrediction({
 
   const trainNumberValue =
     live?.trainNumber ||
-    trainNumber;
+    trainNumber ||
+    "--";
 
 
   const trainName =
@@ -593,15 +410,6 @@ function ETAPrediction({
     live?.destination?.name ||
     live?.destinationName ||
     live?.destination?.stationName ||
-    (
-      Array.isArray(
-        live?.route
-      )
-        ? live.route[
-            live.route.length - 1
-          ]?.stationName
-        : null
-    ) ||
     "Destination";
 
 
@@ -610,26 +418,26 @@ function ETAPrediction({
   =================================================== */
 
   const currentSpeed =
-    num(
+    toNumber(
       live?.calculatedCurrentSpeedKmh ??
-        live?.currentSpeedKmh ??
-        currentLocation?.calculatedSpeedKmh ??
-        currentLocation?.speedKmh ??
-        currentLocation?.speedKmph
+      live?.currentSpeedKmh ??
+      live?.currentSpeed ??
+      currentLocation?.speedKmh ??
+      currentLocation?.speedKmph
     );
 
 
   const averageSpeed =
-    num(
-      live?.avgSpeed ??
-        live?.averageSpeed
+    toNumber(
+      live?.averageSpeed ??
+      live?.avgSpeed
     );
 
 
   const maxSpeed =
-    num(
+    toNumber(
       live?.maxSpeed ??
-        live?.maxSpeedKmh
+      live?.maxSpeedKmh
     );
 
 
@@ -640,101 +448,26 @@ function ETAPrediction({
   const delay =
     Number(
       live?.delayMinutes ??
-        live?.delay ??
-        0
+      live?.delay ??
+      0
     ) || 0;
 
 
   /* ===================================================
-     DISTANCE REMAINING
+     DISTANCE
   =================================================== */
 
   const remainingDistance =
-    num(
+    toNumber(
       live?.remainingDistanceKm ??
-        live?.distanceRemainingKm ??
-        live?.nextHalt?.distanceRemainingKm ??
-        live?.nextStation?.distanceRemainingKm
+      live?.distanceRemainingKm ??
+      live?.nextHalt?.distanceRemainingKm ??
+      live?.nextStation?.distanceRemainingKm
     );
-
-
-  /* ===================================================
-     SEGMENT PROGRESS
-  =================================================== */
-
-  const segmentProgress =
-    num(
-      currentLocation?.segmentProgress ??
-        live?.segmentProgress
-    );
-
-
-  /* ===================================================
-     ROUTE PROGRESS
-
-     We calculate whole-journey progress
-     from current sequence.
-  =================================================== */
-
-  const route =
-    Array.isArray(
-      live?.route
-    )
-      ? live.route
-      : [];
-
-
-  const currentSequence =
-    Number(
-      currentLocation?.sequence
-    ) || 0;
-
-
-  const totalStops =
-    route.length;
-
-
-  let routeProgress =
-    null;
-
-
-  if (
-    totalStops > 1 &&
-    currentSequence > 0
-  ) {
-
-    routeProgress =
-      Math.max(
-        0,
-        Math.min(
-          1,
-          (
-            (
-              currentSequence -
-              1
-            ) +
-            (
-              Number(
-                segmentProgress
-              ) || 0
-            )
-          ) /
-            (
-              totalStops - 1
-            )
-        )
-      );
-
-  }
 
 
   /* ===================================================
      ETA
-
-     Priority:
-     1. API's next halt expected arrival
-     2. Destination schedule + delay
-     3. Distance / speed estimate
   =================================================== */
 
   const directETA =
@@ -747,45 +480,120 @@ function ETAPrediction({
     null;
 
 
-  const routeETA =
-    directETA
-      ? null
-      : getRouteETA(
-          route,
-          delay
+  let fallbackETA = null;
+
+
+  if (
+    !directETA &&
+    remainingDistance !== null &&
+    remainingDistance > 0
+  ) {
+
+    const usableSpeed =
+      currentSpeed &&
+      currentSpeed > 5
+
+        ? currentSpeed
+
+        : averageSpeed &&
+          averageSpeed > 5
+
+          ? averageSpeed
+
+          : null;
+
+
+    if (
+      usableSpeed
+    ) {
+
+      const hours =
+        remainingDistance /
+        usableSpeed;
+
+
+      fallbackETA =
+        new Date(
+          Date.now() +
+          hours *
+          60 *
+          60 *
+          1000 +
+          delay *
+          60 *
+          1000
         );
-
-
-  const fallbackETA =
-    directETA ||
-    routeETA
-      ? null
-      : calculateFallbackETA({
-          remainingDistance,
-          currentSpeed,
-          averageSpeed,
-        });
+    }
+  }
 
 
   const finalETA =
     directETA ||
-    routeETA ||
     fallbackETA;
 
 
   /* ===================================================
-     CONFIDENCE
-
-     This is a data confidence indicator,
-     not a claim of model accuracy.
+     ROUTE PROGRESS
   =================================================== */
 
-  let confidence =
-    20;
+  let routeProgress = null;
+
+
+  const route =
+    Array.isArray(
+      live?.route
+    )
+      ? live.route
+      : [];
+
+
+  const sequence =
+    Number(
+      currentLocation?.sequence
+    ) || 0;
+
+
+  const segmentProgress =
+    Number(
+      currentLocation?.segmentProgress
+    ) || 0;
+
+
+  if (
+    route.length > 1 &&
+    sequence > 0
+  ) {
+
+    routeProgress =
+      Math.max(
+        0,
+        Math.min(
+          100,
+
+          (
+            (
+              sequence - 1
+            ) +
+            segmentProgress
+          ) /
+          (
+            route.length - 1
+          ) *
+          100
+        )
+      );
+  }
+
+
+  /* ===================================================
+     CONFIDENCE
+  =================================================== */
+
+  let confidence = 30;
 
 
   if (finalETA) {
-    confidence += 30;
+    confidence += 25;
   }
 
 
@@ -800,13 +608,11 @@ function ETAPrediction({
   if (
     routeProgress !== null
   ) {
-    confidence += 20;
+    confidence += 15;
   }
 
 
-  if (
-    delay !== null
-  ) {
+  if (delay >= 0) {
     confidence += 10;
   }
 
@@ -819,125 +625,18 @@ function ETAPrediction({
 
 
   /* ===================================================
-     ON-TIME INDICATOR
-
-     Simple status indicator.
+     LIVE STATUS
   =================================================== */
 
-  const onTimeProbability =
-    Math.round(
-      Math.max(
-        20,
-        Math.min(
-          95,
-          95 -
-            (
-              Math.max(
-                0,
-                delay
-              ) *
-              0.6
-            )
-        )
-      )
-    );
+  const simulated =
+    live?.simulated === true ||
+    live?.simulation === true;
 
 
-  /* ===================================================
-     SIGNALS
-  =================================================== */
-
-  const signals = [
-
-    {
-      icon: "⚡",
-      title:
-        "Current Speed",
-      value:
-        currentSpeed !== null
-          ? `${Math.round(
-              currentSpeed
-            )} km/h`
-          : "Unavailable",
-      available:
-        currentSpeed !== null,
-    },
-
-    {
-      icon: "⏱",
-      title:
-        "Current Delay",
-      value:
-        `+${formatDelay(
-          delay
-        )}`,
-      available:
-        true,
-    },
-
-    {
-      icon: "🗺️",
-      title:
-        "Route Progress",
-      value:
-        routeProgress !== null
-          ? `${Math.round(
-              routeProgress *
-                100
-            )}% completed`
-          : "Unavailable",
-      available:
-        routeProgress !== null,
-    },
-
-    {
-      icon: "📊",
-      title:
-        "Historical Pattern",
-      value:
-        "Live journey signals",
-      available:
-        false,
-    },
-
-  ];
-
-
-  const signalCount =
-    signals.filter(
-      (item) =>
-        item.available
-    ).length;
-
-
-  /* ===================================================
-     ETA MESSAGE
-  =================================================== */
-
-  let etaMessage;
-
-
-  if (directETA) {
-
-    etaMessage =
-      "Using live expected arrival data from the train service.";
-
-  } else if (routeETA) {
-
-    etaMessage =
-      "Using scheduled destination arrival adjusted by the current delay.";
-
-  } else if (fallbackETA) {
-
-    etaMessage =
-      "Using remaining distance and available speed data to estimate arrival.";
-
-  } else {
-
-    etaMessage =
-      "More live movement data is required to calculate ETA.";
-
-  }
+  const statusText =
+    simulated
+      ? "SIMULATED DATA"
+      : "LIVE DATA";
 
 
   /* ===================================================
@@ -945,6 +644,7 @@ function ETAPrediction({
   =================================================== */
 
   return (
+
     <section
       className="eta-prediction-section"
       id="eta"
@@ -962,13 +662,16 @@ function ETAPrediction({
             PREDICTIVE INTELLIGENCE
           </span>
 
+
           <h2>
             AI-powered ETA Prediction
           </h2>
 
+
           <p>
-            Live ETA based on current train
-            movement, route progress and delay.
+            Live ETA based on current
+            train movement, route progress
+            and delay.
           </p>
 
         </div>
@@ -978,7 +681,7 @@ function ETAPrediction({
 
           <span></span>
 
-          LIVE DATA
+          {statusText}
 
         </div>
 
@@ -993,42 +696,40 @@ function ETAPrediction({
 
 
         {/* =================================================
-           MAIN ETA CARD
+           MAIN CARD
         ================================================= */}
 
         <div className="prediction-main-card">
 
-          <div className="prediction-top">
+          <div className="train-header-row">
 
             <div>
 
-              <span className="prediction-label">
+              <span className="small-label">
                 TRAIN
               </span>
 
+
               <h3>
-                {trainNumberValue}
-                {" "}
+                {trainNumberValue}{" "}
                 {trainName}
               </h3>
 
+
               <p>
                 {currentStation}
-                {" "}
-                →
-                {" "}
+                {" → "}
                 {destination}
               </p>
 
             </div>
 
 
-            <div className="prediction-train-status">
+            <div className="train-status">
 
               <span></span>
 
-              {live?.status ||
-                "Running"}
+              Running
 
             </div>
 
@@ -1037,42 +738,18 @@ function ETAPrediction({
 
           {/* ETA */}
 
-          <div className="predicted-time">
+          <div className="eta-main">
 
-            <span>
+            <span className="small-label">
               ESTIMATED ARRIVAL
             </span>
 
 
-            <div className="big-time">
+            <div className="eta-time">
 
-              {finalETA
-                ? (() => {
-
-                    const formatted =
-                      formatTime(
-                        finalETA
-                      );
-
-                    const parts =
-                      formatted.split(
-                        " "
-                      );
-
-                    return (
-                      <>
-                        {parts[0]}
-
-                        {parts[1] && (
-                          <small>
-                            {parts[1]}
-                          </small>
-                        )}
-                      </>
-                    );
-
-                  })()
-                : "--"}
+              {formatTime(
+                finalETA
+              )}
 
             </div>
 
@@ -1084,9 +761,9 @@ function ETAPrediction({
           </div>
 
 
-          {/* CONFIDENCE */}
+          {/* Confidence */}
 
-          <div className="confidence-section">
+          <div className="confidence-block">
 
             <div className="confidence-header">
 
@@ -1108,38 +785,37 @@ function ETAPrediction({
                   width:
                     `${confidence}%`,
                 }}
-              ></div>
+              />
 
             </div>
 
 
             <small>
-              Based on available live journey data
+              Based on available journey data
             </small>
 
           </div>
 
 
-          {/* STATS */}
+          {/* Stats */}
 
-          <div className="prediction-stats">
+          <div className="eta-stats-grid">
 
-            <div className="prediction-stat">
+
+            <div className="eta-stat">
 
               <span>
                 Current Delay
               </span>
 
-              <strong className="delay-value">
-                +{formatDelay(
-                  delay
-                )}
+              <strong>
+                +{formatDelay(delay)}
               </strong>
 
             </div>
 
 
-            <div className="prediction-stat">
+            <div className="eta-stat">
 
               <span>
                 Current Speed
@@ -1147,8 +823,7 @@ function ETAPrediction({
 
               <strong>
 
-                {currentSpeed !==
-                  null
+                {currentSpeed !== null
                   ? `${Math.round(
                       currentSpeed
                     )} km/h`
@@ -1159,7 +834,7 @@ function ETAPrediction({
             </div>
 
 
-            <div className="prediction-stat">
+            <div className="eta-stat">
 
               <span>
                 Distance Remaining
@@ -1167,20 +842,16 @@ function ETAPrediction({
 
               <strong>
 
-                {remainingDistance !==
-                  null
-                  ? `${remainingDistance.toLocaleString(
-                      undefined,
-                      {
-                        maximumFractionDigits:
-                          1,
-                      }
+                {remainingDistance !== null
+                  ? `${Math.round(
+                      remainingDistance
                     )} km`
                   : "--"}
 
               </strong>
 
             </div>
+
 
           </div>
 
@@ -1194,140 +865,212 @@ function ETAPrediction({
         <div className="prediction-side">
 
 
-          {/* ON TIME */}
+          {/* On-time */}
 
-          <div className="probability-card">
+          <div className="side-card">
 
-            <div className="probability-header">
-
-              <div>
-
-                <span>
-                  ON-TIME INDICATOR
-                </span>
-
-                <strong>
-                  {onTimeProbability}%
-                </strong>
-
-              </div>
+            <span className="small-label">
+              ON-TIME INDICATOR
+            </span>
 
 
-              <div className="probability-icon">
-                ✓
-              </div>
+            <div className="on-time-value">
+
+              {Math.max(
+                20,
+                Math.min(
+                  95,
+                  95 -
+                  delay * 0.6
+                )
+              ).toFixed(0)}
+              %
 
             </div>
 
 
-            <div className="probability-track">
+            <div className="progress-bar">
 
               <div
                 style={{
                   width:
-                    `${onTimeProbability}%`,
+                    `${Math.max(
+                      20,
+                      Math.min(
+                        95,
+                        95 -
+                        delay * 0.6
+                      )
+                    )}%`,
                 }}
-              ></div>
+              />
 
             </div>
 
 
-            <p>
-
+            <small>
+              Current delay is{" "}
               {delay <= 5
-                ? "Current delay is low."
-                : "Current delay may affect the expected arrival time."}
-
-            </p>
+                ? "low."
+                : "being monitored."}
+            </small>
 
           </div>
 
 
-          {/* INPUTS */}
+          {/* Inputs */}
 
-          <div className="factors-card">
+          <div className="side-card">
 
-            <div className="factors-title">
+            <div className="side-card-header">
 
               <span>
                 LIVE INPUTS
               </span>
 
               <strong>
-                {signalCount} /{" "}
-                {signals.length}
+                {currentSpeed !== null
+                  ? "3 / 4"
+                  : "2 / 4"}
               </strong>
 
             </div>
 
 
-            <div className="factor-list">
+            <div className="input-row">
 
-              {signals.map(
-                (
-                  item
-                ) => (
+              <span className="input-icon">
+                ⚡
+              </span>
 
-                  <div
-                    className="factor-item"
-                    key={
-                      item.title
-                    }
-                  >
+              <div>
 
-                    <div className="factor-icon">
-                      {item.icon}
-                    </div>
+                <strong>
+                  Current Speed
+                </strong>
+
+                <small>
+
+                  {currentSpeed !== null
+                    ? `${Math.round(
+                        currentSpeed
+                      )} km/h`
+                    : "Unavailable"}
+
+                </small>
+
+              </div>
+
+              <span>
+                ✓
+              </span>
+
+            </div>
 
 
-                    <div className="factor-text">
+            <div className="input-row">
 
-                      <strong>
-                        {item.title}
-                      </strong>
+              <span className="input-icon">
+                ⏱
+              </span>
 
-                      <span>
-                        {item.value}
-                      </span>
+              <div>
 
-                    </div>
+                <strong>
+                  Current Delay
+                </strong>
+
+                <small>
+                  +{formatDelay(delay)}
+                </small>
+
+              </div>
+
+              <span>
+                ✓
+              </span>
+
+            </div>
 
 
-                    <div
-                      className={
-                        item.available
-                          ? "factor-check"
-                          : "factor-unavailable"
-                      }
-                    >
-                      {item.available
-                        ? "✓"
-                        : "—"}
-                    </div>
+            <div className="input-row">
 
-                  </div>
+              <span className="input-icon">
+                🗺️
+              </span>
 
-                )
-              )}
+              <div>
+
+                <strong>
+                  Route Progress
+                </strong>
+
+                <small>
+
+                  {routeProgress !== null
+                    ? `${Math.round(
+                        routeProgress
+                      )}% completed`
+                    : "Unavailable"}
+
+                </small>
+
+              </div>
+
+              <span>
+                ✓
+              </span>
+
+            </div>
+
+
+            <div className="input-row">
+
+              <span className="input-icon">
+                📊
+              </span>
+
+              <div>
+
+                <strong>
+                  Historical Pattern
+                </strong>
+
+                <small>
+                  Journey signals
+                </small>
+
+              </div>
+
+              <span>
+                —
+              </span>
 
             </div>
 
           </div>
 
 
-          {/* NOTE */}
+          {/* Message */}
 
-          <div className="prediction-note">
+          <div className="eta-info-box">
 
             <span>
               ⓘ
             </span>
 
             <p>
-              {etaMessage}
+
+              {simulated
+
+                ? "Using simulated train movement data. This mode does not consume the RailRadar API quota."
+
+                : "Using available live journey data."}
+
             </p>
 
           </div>
+
 
         </div>
 
@@ -1335,108 +1078,24 @@ function ETAPrediction({
 
 
       {/* =================================================
-         HOW IT WORKS
+         ERROR NOTICE
       ================================================= */}
 
-      <div className="how-it-works">
+      {error && (
 
-        <span className="eyebrow">
-          HOW IT WORKS
-        </span>
+        <div className="eta-info-box">
 
-        <h3>
-          From train movement to ETA
-        </h3>
+          <span>
+            ⚠
+          </span>
 
-
-        <div className="how-steps">
-
-
-          <div className="how-step">
-
-            <small>
-              01
-            </small>
-
-            <strong>
-              Train Data
-            </strong>
-
-            <span>
-              Position, speed and delay
-            </span>
-
-          </div>
-
-
-          <div className="how-arrow">
-            →
-          </div>
-
-
-          <div className="how-step">
-
-            <small>
-              02
-            </small>
-
-            <strong>
-              Route Analysis
-            </strong>
-
-            <span>
-              Remaining distance and stations
-            </span>
-
-          </div>
-
-
-          <div className="how-arrow">
-            →
-          </div>
-
-
-          <div className="how-step">
-
-            <small>
-              03
-            </small>
-
-            <strong>
-              Prediction
-            </strong>
-
-            <span>
-              Live journey signals are combined
-            </span>
-
-          </div>
-
-
-          <div className="how-arrow">
-            →
-          </div>
-
-
-          <div className="how-step">
-
-            <small>
-              04
-            </small>
-
-            <strong>
-              ETA
-            </strong>
-
-            <span>
-              Estimated arrival time
-            </span>
-
-          </div>
+          <p>
+            {error}
+          </p>
 
         </div>
 
-      </div>
+      )}
 
     </section>
   );
