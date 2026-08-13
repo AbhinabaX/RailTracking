@@ -4,8 +4,7 @@ import {
   calculateETA,
 } from "../services/etaService.js";
 
-import saveTrainHistory
-  from "../services/trainHistoryService.js";
+import saveTrainHistory from "../services/trainHistoryService.js";
 
 
 /* =====================================================
@@ -28,66 +27,42 @@ export const getAllTrains = (req, res) => {
 ===================================================== */
 
 export const searchTrains = (req, res) => {
-
   const query =
     req.query.q?.trim().toLowerCase();
 
-
   if (!query) {
-
     return res.status(400).json({
       success: false,
       message:
         "Please provide a train number, name or route.",
     });
-
   }
 
+  const results = trains.filter((train) => {
+    return (
+      String(train.number)
+        .toLowerCase()
+        .includes(query) ||
 
-  const results =
-    trains.filter((train) => {
+      String(train.name)
+        .toLowerCase()
+        .includes(query) ||
 
-      return (
+      String(train.from)
+        .toLowerCase()
+        .includes(query) ||
 
-        String(train.number)
-          .toLowerCase()
-          .includes(query)
-
-        ||
-
-        String(train.name)
-          .toLowerCase()
-          .includes(query)
-
-        ||
-
-        String(train.from)
-          .toLowerCase()
-          .includes(query)
-
-        ||
-
-        String(train.to)
-          .toLowerCase()
-          .includes(query)
-
-      );
-
-    });
-
-
-  return res.json({
-
-    success: true,
-
-    count:
-      results.length,
-
-    trains:
-      results,
-
+      String(train.to)
+        .toLowerCase()
+        .includes(query)
+    );
   });
 
+  return res.json({
+    success: true,
+    count: results.length,
+    trains: results,
+  });
 };
 
 
@@ -96,170 +71,389 @@ export const searchTrains = (req, res) => {
    GET /api/trains/:number
 ===================================================== */
 
-export const getTrainByNumber =
-  (req, res) => {
+export const getTrainByNumber = (req, res) => {
+  const trainNumber =
+    req.params.number;
 
-    const trainNumber =
-      req.params.number;
+  const train = trains.find(
+    (item) =>
+      String(item.number) ===
+      String(trainNumber)
+  );
 
-
-    const train =
-      trains.find(
-        (item) =>
-          String(item.number) ===
-          String(trainNumber)
-      );
-
-
-    if (!train) {
-
-      return res.status(404).json({
-        success: false,
-        message:
-          "Train not found.",
-      });
-
-    }
-
-
-    return res.json({
-      success: true,
-      train,
+  if (!train) {
+    return res.status(404).json({
+      success: false,
+      message: "Train not found.",
     });
+  }
 
-  };
+  return res.json({
+    success: true,
+    train,
+  });
+};
+
+
+/* =====================================================
+   LIVE TRAIN CACHE
+===================================================== */
+
+/*
+   Frontend can request every 5 seconds.
+
+   But we DO NOT call RailRadar every 5 seconds.
+
+   External API:
+   → Maximum one request per train every 60 seconds.
+
+   Frontend:
+   → Can still request every 5 seconds.
+
+   This prevents API rate limiting.
+*/
+
+const LIVE_CACHE_TTL_MS =
+  60 * 1000;
+
+const LIVE_STALE_MAX_MS =
+  5 * 60 * 1000;
+
+
+/*
+   Stores latest successful live data.
+*/
+
+const liveTrainCache =
+  new Map();
+
+
+/*
+   Stores currently running API requests.
+
+   This prevents multiple components from calling
+   RailRadar simultaneously for the same train.
+*/
+
+const liveTrainRequests =
+  new Map();
 
 
 /* =====================================================
    FETCH LIVE TRAIN DATA FROM RAILRADAR
 ===================================================== */
 
-const fetchLiveTrainData =
-  async (
-    trainNumber
-  ) => {
+const fetchLiveTrainData = async (
+  trainNumber
+) => {
 
-    const apiKey =
-      process.env.RAILRADAR_API_KEY?.trim();
+  const cacheKey =
+    String(trainNumber);
+
+  const now =
+    Date.now();
+
+  const cached =
+    liveTrainCache.get(cacheKey);
 
 
-    if (!apiKey) {
+  /* ===================================================
+     1. RETURN FRESH CACHE
+  =================================================== */
 
-      const error =
-        new Error(
-          "RAILRADAR_API_KEY is missing from .env"
+  if (
+    cached &&
+    now - cached.timestamp <
+      LIVE_CACHE_TTL_MS
+  ) {
+
+    return cached.data;
+  }
+
+
+  /* ===================================================
+     2. SHARE EXISTING REQUEST
+  =================================================== */
+
+  /*
+     If another request is already fetching
+     the same train, wait for that request.
+
+     This prevents:
+
+     ETA → API
+     Radar → API
+     Frontend → API
+
+     all at the same time.
+  */
+
+  if (
+    liveTrainRequests.has(cacheKey)
+  ) {
+
+    return liveTrainRequests.get(
+      cacheKey
+    );
+  }
+
+
+  /* ===================================================
+     3. CREATE NEW EXTERNAL API REQUEST
+  =================================================== */
+
+  const requestPromise =
+    (async () => {
+
+      const apiKey =
+        process.env.RAILRADAR_API_KEY?.trim();
+
+
+      /* -----------------------------------------------
+         API KEY CHECK
+      ------------------------------------------------ */
+
+      if (!apiKey) {
+
+        const error =
+          new Error(
+            "RAILRADAR_API_KEY is missing from .env"
+          );
+
+        error.statusCode =
+          500;
+
+        throw error;
+      }
+
+
+      /* -----------------------------------------------
+         RAILRADAR URL
+      ------------------------------------------------ */
+
+      const url =
+        `https://api.railradar.in/v1/trains/${trainNumber}/live` +
+        `?haltsOnly=true` +
+        `&includeCoordinates=true` +
+        `&geometry=true` +
+        `&format=coordinates`;
+
+
+      /* -----------------------------------------------
+         API REQUEST
+      ------------------------------------------------ */
+
+      const response =
+        await fetch(
+          url,
+          {
+            method: "GET",
+
+            headers: {
+              Authorization:
+                `Bearer ${apiKey}`,
+
+              Accept:
+                "application/json",
+            },
+          }
         );
 
-      error.statusCode =
-        500;
 
-      throw error;
+      /* -----------------------------------------------
+         READ RESPONSE
+      ------------------------------------------------ */
 
-    }
+      let payload =
+        null;
+
+      try {
+
+        payload =
+          await response.json();
+
+      } catch {
+
+        payload =
+          null;
+      }
 
 
-    const url =
-      `https://api.railradar.in/v1/trains/${trainNumber}/live` +
-      `?haltsOnly=true` +
-      `&includeCoordinates=true` +
-      `&geometry=true` +
-      `&format=coordinates`;
+      /* =================================================
+         4. RATE LIMIT HANDLING
+      ================================================= */
+
+      if (
+        response.status === 429
+      ) {
+
+        /*
+           If old live data exists,
+           continue using it.
+
+           This prevents the website
+           from breaking.
+        */
+
+        if (
+          cached &&
+          now - cached.timestamp <
+            LIVE_STALE_MAX_MS
+        ) {
+
+          console.warn(
+            `[BACKEND] RailRadar rate limited ${trainNumber}; using cached live data.`
+          );
+
+          return cached.data;
+        }
 
 
-    const response =
-      await fetch(
-        url,
+        /*
+           No cached data available.
+        */
+
+        const error =
+          new Error(
+            "Live train API rate limit reached. Please wait and try again later."
+          );
+
+        error.statusCode =
+          429;
+
+        throw error;
+      }
+
+
+      /* =================================================
+         5. OTHER API ERRORS
+      ================================================= */
+
+      if (
+        !response.ok
+      ) {
+
+        /*
+           If old data exists,
+           use it instead of breaking UI.
+        */
+
+        if (
+          cached &&
+          now - cached.timestamp <
+            LIVE_STALE_MAX_MS
+        ) {
+
+          console.warn(
+            `[BACKEND] RailRadar error ${response.status} for ${trainNumber}; using cached live data.`
+          );
+
+          return cached.data;
+        }
+
+
+        const error =
+          new Error(
+            payload?.error?.message ||
+            payload?.message ||
+            "Unable to fetch live train data."
+          );
+
+        error.statusCode =
+          response.status;
+
+        throw error;
+      }
+
+
+      /* =================================================
+         6. GET ACTUAL LIVE DATA
+      ================================================= */
+
+      /*
+         RailRadar may return:
+
+         {
+           data: {...}
+         }
+
+         OR
+
+         {
+           ...
+         }
+      */
+
+      const live =
+        payload?.data ??
+        payload;
+
+
+      if (!live) {
+
+        const error =
+          new Error(
+            "Live train data unavailable."
+          );
+
+        error.statusCode =
+          502;
+
+        throw error;
+      }
+
+
+      /* =================================================
+         7. SAVE SUCCESSFUL RESPONSE TO CACHE
+      ================================================= */
+
+      liveTrainCache.set(
+        cacheKey,
         {
-          method:
-            "GET",
+          data:
+            live,
 
-          headers: {
-            Authorization:
-              `Bearer ${apiKey}`,
-
-            Accept:
-              "application/json",
-          },
+          timestamp:
+            Date.now(),
         }
       );
 
 
-    let payload =
-      null;
+      console.log(
+        `[BACKEND] Live train data refreshed: ${trainNumber}`
+      );
 
 
-    try {
+      return live;
 
-      payload =
-        await response.json();
-
-    } catch {
-
-      payload =
-        null;
-
-    }
+    })();
 
 
-    /* -----------------------------------------------
-       RATE LIMIT
-    ------------------------------------------------ */
+  /* ===================================================
+     8. STORE CURRENT REQUEST
+  =================================================== */
 
-    if (
-      response.status ===
-      429
-    ) {
-
-      const error =
-        new Error(
-          "Live train API rate limit reached. Please wait and try again later."
-        );
-
-      error.statusCode =
-        429;
-
-      throw error;
-
-    }
+  liveTrainRequests.set(
+    cacheKey,
+    requestPromise
+  );
 
 
-    /* -----------------------------------------------
-       API ERROR
-    ------------------------------------------------ */
+  /* ===================================================
+     9. CLEANUP REQUEST
+  =================================================== */
 
-    if (!response.ok) {
+  try {
 
-      const error =
-        new Error(
-          payload?.error?.message ||
-          payload?.message ||
-          "Unable to fetch live train data."
-        );
+    return await requestPromise;
 
-      error.statusCode =
-        response.status;
+  } finally {
 
-      throw error;
-
-    }
-
-
-    /*
-      RailRadar may return:
-
-      { data: {...} }
-
-      or directly:
-
-      {...}
-    */
-
-    return (
-      payload?.data ??
-      payload
+    liveTrainRequests.delete(
+      cacheKey
     );
-
-  };
+  }
+};
 
 
 /* =====================================================
@@ -274,7 +468,7 @@ export const getLiveTrain =
   ) => {
 
     const {
-      number,
+      number
     } = req.params;
 
 
@@ -283,21 +477,15 @@ export const getLiveTrain =
     ------------------------------------------------ */
 
     if (
-      !/^\d{5}$/.test(
-        number
-      )
+      !/^\d{5}$/.test(number)
     ) {
 
       return res.status(400).json({
-
-        success:
-          false,
+        success: false,
 
         message:
           "Train number must contain exactly 5 digits.",
-
       });
-
     }
 
 
@@ -305,7 +493,7 @@ export const getLiveTrain =
 
       /* ---------------------------------------------
          FETCH LIVE DATA
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const live =
         await fetchLiveTrainData(
@@ -315,8 +503,7 @@ export const getLiveTrain =
 
       /* ---------------------------------------------
          SAVE HISTORY
-         AND CALCULATE SPEED
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const historyResult =
         await saveTrainHistory(
@@ -326,7 +513,7 @@ export const getLiveTrain =
 
       /* ---------------------------------------------
          SPEED
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const currentSpeedKmh =
         historyResult?.currentSpeedKmh ??
@@ -336,18 +523,15 @@ export const getLiveTrain =
       const speedSource =
         historyResult?.speedSource ||
         (
-          currentSpeedKmh !==
-            null
-
+          currentSpeedKmh !== null
             ? "calculated"
-
             : "unavailable"
         );
 
 
       /* ---------------------------------------------
          GPS
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const apiLocation =
         live?.currentLocation ||
@@ -372,8 +556,8 @@ export const getLiveTrain =
 
 
       /* ---------------------------------------------
-         ENRICH CURRENT LOCATION
-      ---------------------------------------------- */
+         ENRICH LOCATION
+      --------------------------------------------- */
 
       const enrichedLocation = {
 
@@ -397,13 +581,12 @@ export const getLiveTrain =
 
         calculatedSpeedKmh:
           currentSpeedKmh,
-
       };
 
 
       /* ---------------------------------------------
          ENRICH LIVE OBJECT
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const enrichedLive = {
 
@@ -423,13 +606,12 @@ export const getLiveTrain =
 
         currentLocation:
           enrichedLocation,
-
       };
 
 
       /* ---------------------------------------------
          RESPONSE
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       return res.json({
 
@@ -462,9 +644,7 @@ export const getLiveTrain =
           "Unable to fetch live train data.",
 
       });
-
     }
-
   };
 
 
@@ -480,7 +660,7 @@ export const getTrainETA =
   ) => {
 
     const {
-      number,
+      number
     } = req.params;
 
 
@@ -489,9 +669,7 @@ export const getTrainETA =
     ------------------------------------------------ */
 
     if (
-      !/^\d{5}$/.test(
-        number
-      )
+      !/^\d{5}$/.test(number)
     ) {
 
       return res.status(400).json({
@@ -503,7 +681,6 @@ export const getTrainETA =
           "Train number must contain exactly 5 digits.",
 
       });
-
     }
 
 
@@ -511,7 +688,12 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          FETCH LIVE DATA
-      ---------------------------------------------- */
+
+         This uses the SAME cache.
+
+         So ETA and Live Radar do not
+         create separate RailRadar calls.
+      --------------------------------------------- */
 
       const live =
         await fetchLiveTrainData(
@@ -521,7 +703,7 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          SAVE HISTORY
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const historyResult =
         await saveTrainHistory(
@@ -531,7 +713,7 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          ROUTE
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const route =
         Array.isArray(
@@ -543,7 +725,7 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          CURRENT LOCATION
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const currentLocation =
         live?.currentLocation ||
@@ -552,7 +734,7 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          CURRENT SEQUENCE
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const currentSequence =
         Number(
@@ -564,7 +746,7 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          SEGMENT PROGRESS
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const segmentProgress =
         Number(
@@ -576,7 +758,7 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          DELAY
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const delayMinutes =
         Number(
@@ -588,14 +770,10 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          CALCULATE ETA
-         
-         IMPORTANT:
-         calculateETA() is now async because
-         it calls the ML service.
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const eta =
-        await calculateETA({
+        calculateETA({
 
           route,
 
@@ -612,7 +790,7 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          SPEED
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const historySpeed =
         historyResult?.currentSpeedKmh ??
@@ -630,17 +808,14 @@ export const getTrainETA =
 
 
       const currentSpeedKmh =
-        historySpeed !==
-        null
-
+        historySpeed !== null
           ? historySpeed
-
           : apiSpeed;
 
 
       /* ---------------------------------------------
          AVERAGE SPEED
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const averageSpeed =
         Number(
@@ -652,7 +827,7 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          MAX SPEED
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const maxSpeed =
         Number(
@@ -664,7 +839,7 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          REMAINING DISTANCE
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const apiRemainingDistance =
         Number(
@@ -682,17 +857,14 @@ export const getTrainETA =
 
 
       const remainingDistanceKm =
-        apiRemainingDistance >
-        0
-
+        apiRemainingDistance > 0
           ? apiRemainingDistance
-
           : etaRemainingDistance;
 
 
       /* ---------------------------------------------
-         CURRENT / NEXT STATION
-      ---------------------------------------------- */
+         CURRENT STATION
+      --------------------------------------------- */
 
       const currentStation =
         currentLocation?.stationName ||
@@ -700,6 +872,10 @@ export const getTrainETA =
         live?.previousHalt?.stationName ||
         "Current Location";
 
+
+      /* ---------------------------------------------
+         NEXT STATION
+      --------------------------------------------- */
 
       const nextStation =
         live?.nextHalt?.stationName ||
@@ -710,7 +886,7 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          TRAIN OBJECT
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const trainInfo = {
 
@@ -762,7 +938,7 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          PREDICTION OBJECT
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       const prediction = {
 
@@ -787,7 +963,7 @@ export const getTrainETA =
 
       /* ---------------------------------------------
          FINAL RESPONSE
-      ---------------------------------------------- */
+      --------------------------------------------- */
 
       return res.json({
 
@@ -797,7 +973,8 @@ export const getTrainETA =
         train:
           trainInfo,
 
-        prediction,
+        prediction:
+          prediction,
 
         meta: {
 
@@ -805,9 +982,7 @@ export const getTrainETA =
             historyResult?.speedSource ||
             (
               currentSpeedKmh > 0
-
                 ? "calculated"
-
                 : "unavailable"
             ),
 
@@ -840,7 +1015,5 @@ export const getTrainETA =
           "Unable to calculate train ETA.",
 
       });
-
     }
-
   };
