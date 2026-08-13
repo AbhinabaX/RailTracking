@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -297,6 +298,10 @@ function ETAPrediction({
   ] = useState("");
 
 
+  const isFetchingRef =
+    useRef(false);
+
+
   /* ===================================================
      FETCH LIVE DATA
 
@@ -305,19 +310,22 @@ function ETAPrediction({
   =================================================== */
 
   const fetchLive =
-    async () => {
+    async (showLoading = false) => {
 
-      if (!trainNumber) {
+      if (!trainNumber || isFetchingRef.current) {
         return;
       }
 
+      isFetchingRef.current = true;
 
       try {
 
         setError("");
 
 
-        setLoading(true);
+        if (showLoading) {
+          setLoading(true);
+        }
 
 
         const response =
@@ -381,18 +389,23 @@ function ETAPrediction({
         );
 
 
-        setLive(null);
-
-
-        setError(
-          err.message ||
-            "Unable to calculate ETA."
-        );
+        // Keep the last successful data during background refresh failures.
+        // Only show the error when there is no previous live data.
+        if (!live) {
+          setError(
+            err.message ||
+              "Unable to calculate ETA."
+          );
+        }
 
 
       } finally {
 
-        setLoading(false);
+        if (showLoading) {
+          setLoading(false);
+        }
+
+        isFetchingRef.current = false;
 
       }
     };
@@ -404,7 +417,13 @@ function ETAPrediction({
 
   useEffect(() => {
 
-    fetchLive();
+    if (!trainNumber) {
+      return;
+    }
+
+    setError("");
+    setLive(null);
+    fetchLive(true);
 
   }, [
     trainNumber,
@@ -426,10 +445,12 @@ function ETAPrediction({
       window.setInterval(
         () => {
 
-          fetchLive();
+          // Background refresh: keep showing the last
+          // successful data while the new request runs.
+          fetchLive(false);
 
         },
-        120000
+        5000
       );
 
 
